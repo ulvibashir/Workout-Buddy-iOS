@@ -1,0 +1,78 @@
+import Foundation
+import FirebaseFirestore
+
+// MARK: - Daily nutrition log
+struct NutritionLog: Codable {
+    var foods:       [LoggedFood]
+    var water:       Int          // ml
+    var supplements: [String]
+}
+
+struct LoggedFood: Codable, Identifiable {
+    var id:       String
+    var name:     String
+    var weight:   Double   // grams or units consumed
+    var protein:  Double
+    var carbs:    Double
+    var fats:     Double
+    var calories: Double
+}
+
+// MARK: - Food database entry (matches web dashboard Firestore structure)
+struct FoodItem: Codable, Identifiable {
+    var id:         String
+    var name:       String
+    var unit:       String    // "100g", "egg", "tbsp", "banana", etc.
+    var unitAmount: Double    // default serving size in that unit
+    var protein:    Double    // macros per 1 unitAmount serving
+    var carbs:      Double
+    var fat:        Double    // web uses "fat" not "fats"
+    var calories:   Double
+
+    /// Scale macros by a multiplier (how many servings)
+    func loggedFood(servings: Double) -> LoggedFood {
+        LoggedFood(
+            id:       UUID().uuidString,
+            name:     name,
+            weight:   unitAmount * servings,
+            protein:  (protein  * servings * 10).rounded() / 10,
+            carbs:    (carbs    * servings * 10).rounded() / 10,
+            fats:     (fat      * servings * 10).rounded() / 10,
+            calories: (calories * servings).rounded()
+        )
+    }
+
+    /// Convenience: per-gram macros (useful for 100g-unit foods)
+    var perGram: (protein: Double, carbs: Double, fat: Double, calories: Double) {
+        let base = unitAmount > 0 ? unitAmount : 1
+        return (protein/base, carbs/base, fat/base, calories/base)
+    }
+}
+
+// MARK: - Macro targets (matches web Firestore structure with "fat" key)
+struct NutritionTargets: Codable {
+    var trainingDays: MacroTarget
+    var restDays:     MacroTarget
+
+    struct MacroTarget: Codable {
+        var calories: Int
+        var protein:  Int
+        var carbs:    Int
+        var fat:      Int   // web uses "fat" not "fats"
+    }
+}
+
+// MARK: - Supplement (matches web Firestore structure)
+struct Supplement: Codable, Identifiable {
+    var id:   String
+    var name: String
+    var dose: String
+    var timing: String
+}
+
+extension NutritionTargets {
+    static let `default` = NutritionTargets(
+        trainingDays: MacroTarget(calories: 2900, protein: 136, carbs: 325, fat: 75),
+        restDays:     MacroTarget(calories: 2300, protein: 136, carbs: 225, fat: 70)
+    )
+}
