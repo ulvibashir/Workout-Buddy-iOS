@@ -34,10 +34,13 @@ final class WorkoutViewModel: ObservableObject {
 
     func start() {
         tasks.forEach { $0.cancel() }
-        tasks = [
-            Task { await loadWorkoutDays() },
-            Task { await listenCompletedDays() }
-        ]
+        isLoading = true
+        // Listen to each day individually so UI updates the moment DataSeeder writes —
+        // prevents the race condition where seeder finishes after the initial fetch.
+        tasks = [Task { await listenCompletedDays() }]
+            + AppConstants.Firestore.WeekDays.all.map { day in
+                Task { await listenWorkoutDay(day) }
+            }
     }
 
     func stop() { tasks.forEach { $0.cancel() }; tasks = [] }
@@ -60,9 +63,11 @@ final class WorkoutViewModel: ObservableObject {
         showRestTimer = true
     }
 
-    private func loadWorkoutDays() async {
-        workoutDays = (try? await workoutRepo.fetchAllWorkoutDays()) ?? [:]
-        isLoading   = false
+    private func listenWorkoutDay(_ day: String) async {
+        for await result in workoutRepo.listenWorkoutDay(day) {
+            if case .success(let wd) = result, let wd { workoutDays[day] = wd }
+            isLoading = false
+        }
     }
 
     private func listenCompletedDays() async {

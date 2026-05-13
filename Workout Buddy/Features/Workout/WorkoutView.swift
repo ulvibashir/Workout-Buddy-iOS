@@ -29,6 +29,7 @@ private struct _WorkoutView: View {
                                     .foregroundColor(AppTheme.textMuted)
                                     .padding(.top, 40)
                             }
+                            trackSection
                         }
                         .padding(.horizontal, 16)
                         .padding(.bottom, 30)
@@ -126,6 +127,34 @@ private struct _WorkoutView: View {
                 ExerciseSectionView(title: "Cool-down", exercises: workout.cooldown, color: .blue, onRestTimer: { secs in vm.triggerRestTimer(seconds: secs) })
             }
         }
+    }
+
+    // MARK: - Track section
+    private var trackSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("TRACK TRAINING").font(.caption2).tracking(0.8).foregroundColor(AppTheme.textMuted).padding(.horizontal, 4)
+            HStack(spacing: 10) {
+                NavigationLink { PullUpsView() } label: {
+                    Label("Pull-ups Log", systemImage: "figure.strengthtraining.traditional")
+                        .font(.subheadline).bold()
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(AppTheme.accentBlue.opacity(0.15))
+                        .foregroundColor(AppTheme.accentBlue)
+                        .cornerRadius(12)
+                }
+                NavigationLink { RunningView() } label: {
+                    Label("Running Log", systemImage: "figure.run")
+                        .font(.subheadline).bold()
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(AppTheme.accentGreen.opacity(0.15))
+                        .foregroundColor(AppTheme.accentGreen)
+                        .cornerRadius(12)
+                }
+            }
+        }
+        .padding(.top, 4)
     }
 
     // MARK: - Completion button

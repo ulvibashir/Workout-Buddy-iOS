@@ -1,22 +1,36 @@
 import Foundation
 
 struct WorkoutDay: Codable {
-    var name:      String
-    var color:     String
-    var duration:  String
-    var intensity: String
-    var exercises: [Exercise]
-    var warmup:    [Exercise]
-    var cooldown:  [Exercise]
+    var name:       String
+    var color:      String
+    var duration:   String
+    var intensity:  String
+    var exercises:  [Exercise]
+    var warmup:     [Exercise]
+    var cooldown:   [Exercise]
     var activation: [Exercise]
+
+    // Custom decoder: all array fields are optional in Firestore — use decodeIfPresent
+    // so a missing "activation" (or any other array) doesn't crash the whole decode.
+    init(from decoder: Decoder) throws {
+        let c         = try decoder.container(keyedBy: CodingKeys.self)
+        name          = try c.decode(String.self, forKey: .name)
+        color         = try c.decode(String.self, forKey: .color)
+        duration      = try c.decode(String.self, forKey: .duration)
+        intensity     = try c.decode(String.self, forKey: .intensity)
+        exercises     = try c.decodeIfPresent([Exercise].self, forKey: .exercises)  ?? []
+        warmup        = try c.decodeIfPresent([Exercise].self, forKey: .warmup)     ?? []
+        cooldown      = try c.decodeIfPresent([Exercise].self, forKey: .cooldown)   ?? []
+        activation    = try c.decodeIfPresent([Exercise].self, forKey: .activation) ?? []
+    }
 
     init(name: String, color: String, duration: String, intensity: String,
          exercises: [Exercise] = [], warmup: [Exercise] = [],
          cooldown: [Exercise] = [], activation: [Exercise] = []) {
-        self.name       = name;  self.color      = color
-        self.duration   = duration; self.intensity  = intensity
-        self.exercises  = exercises; self.warmup     = warmup
-        self.cooldown   = cooldown;  self.activation = activation
+        self.name       = name;       self.color      = color
+        self.duration   = duration;   self.intensity  = intensity
+        self.exercises  = exercises;  self.warmup     = warmup
+        self.cooldown   = cooldown;   self.activation = activation
     }
 }
 

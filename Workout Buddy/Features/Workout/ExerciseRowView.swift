@@ -34,7 +34,7 @@ struct ExerciseRowView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(exercise.name).font(.callout).bold()
                         HStack(spacing: 6) {
-                            Text("\(exercise.sets) × \(exercise.reps)")
+                            if !setsRepsText.isEmpty { Text(setsRepsText) }
                             if let w = exercise.weight { Text("@ \(w)").foregroundColor(AppTheme.textMuted) }
                         }
                         .font(.caption).foregroundColor(AppTheme.textMuted)
@@ -94,6 +94,15 @@ struct ExerciseRowView: View {
         }
         .background(AppTheme.cardBackground)
         .cornerRadius(12)
+    }
+
+    private var setsRepsText: String {
+        switch (exercise.sets, exercise.reps) {
+        case let (s?, r?): return "\(s) × \(r)"
+        case let (s?, nil): return "\(s) sets"
+        case let (nil, r?): return r
+        case (nil, nil): return ""
+        }
     }
 
     private func updateAllCompleted() {
