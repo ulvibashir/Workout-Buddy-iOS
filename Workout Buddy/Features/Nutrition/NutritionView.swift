@@ -1,31 +1,68 @@
 import SwiftUI
 
 struct NutritionView: View {
-    @State private var vm = NutritionViewModel()
+    @Environment(AuthViewModel.self) private var authViewModel
+    @State private var vm: NutritionViewModel?
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: Spacing.md) {
-                    dayTypeHeader
-                    macroTargetsCard
-                    mealPlanSection
-                    foodGuideSection
-                    supplementsSection
-                    cheatDayCard
+            Group {
+                if let vm {
+                    loadedContent(vm: vm)
+                } else {
+                    nutritionSkeleton
                 }
-                .padding(.horizontal, Spacing.md)
-                .padding(.bottom, Spacing.xxxl)
             }
             .navigationTitle("Nutrition")
             .navigationBarTitleDisplayMode(.large)
             .background(Color.appBackground.ignoresSafeArea())
         }
+        .task {
+            guard vm == nil, let uid = authViewModel.currentUID else { return }
+            let m = NutritionViewModel(uid: uid)
+            vm = m
+            await m.loadData()
+        }
+    }
+
+    // MARK: - Skeleton
+
+    private var nutritionSkeleton: some View {
+        ScrollView {
+            VStack(spacing: Spacing.md) {
+                SkeletonView().frame(height: 40)
+                SkeletonView().frame(height: 100)
+                SkeletonView().frame(height: 60)
+                SkeletonView().frame(height: 60)
+                SkeletonView().frame(height: 60)
+                SkeletonView().frame(height: 120)
+            }
+            .padding(.horizontal, Spacing.md)
+            .padding(.top, Spacing.md)
+        }
+    }
+
+    // MARK: - Loaded content
+
+    @ViewBuilder
+    private func loadedContent(vm: NutritionViewModel) -> some View {
+        ScrollView {
+            VStack(spacing: Spacing.md) {
+                dayTypeHeader(vm: vm)
+                macroTargetsCard(vm: vm)
+                mealPlanSection(vm: vm)
+                foodGuideSection(vm: vm)
+                supplementsSection(vm: vm)
+                cheatDayCard(vm: vm)
+            }
+            .padding(.horizontal, Spacing.md)
+            .padding(.bottom, Spacing.xxxl)
+        }
     }
 
     // MARK: - Day Type Header
 
-    private var dayTypeHeader: some View {
+    private func dayTypeHeader(vm: NutritionViewModel) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Today's Plan")
@@ -44,7 +81,7 @@ struct NutritionView: View {
 
     // MARK: - Macro Targets Card
 
-    private var macroTargetsCard: some View {
+    private func macroTargetsCard(vm: NutritionViewModel) -> some View {
         let t = vm.todayTargets
         return VStack(spacing: Spacing.md) {
             HStack(spacing: 0) {
@@ -77,10 +114,10 @@ struct NutritionView: View {
 
     // MARK: - Meal Plan Section
 
-    private var mealPlanSection: some View {
+    private func mealPlanSection(vm: NutritionViewModel) -> some View {
         VStack(spacing: Spacing.xs) {
             SectionHeader(title: "Daily Meal Plan")
-            ForEach(vm.meals) { meal in
+            ForEach(vm.todayMeals) { meal in
                 MealCardView(meal: meal, isExpanded: vm.expandedMeal == meal.id) {
                     withAnimation(.easeInOut(duration: 0.22)) {
                         vm.expandedMeal = vm.expandedMeal == meal.id ? nil : meal.id
@@ -92,47 +129,35 @@ struct NutritionView: View {
 
     // MARK: - Food Guide Section
 
-    private var foodGuideSection: some View {
+    private func foodGuideSection(vm: NutritionViewModel) -> some View {
         VStack(spacing: Spacing.xs) {
             SectionHeader(title: "Food Guide")
-            ExpandableFoodSection(
-                header: "✅ Eat Freely",
-                color: .appSuccess,
-                items: vm.eatFreelyFoods
-            )
-            ExpandableFoodSection(
-                header: "⚠️ Eat in Moderation",
-                color: .appWarning,
-                items: vm.eatInModerationFoods
-            )
-            ExpandableFoodSection(
-                header: "❌ Avoid",
-                color: .appDanger,
-                items: vm.avoidFoods
-            )
+            ExpandableFoodSection(header: "✅ Eat Freely",        color: .appSuccess, items: vm.eatFreelyFoods)
+            ExpandableFoodSection(header: "⚠️ Eat in Moderation", color: .appWarning, items: vm.eatInModerationFoods)
+            ExpandableFoodSection(header: "❌ Avoid",             color: .appDanger,  items: vm.avoidFoods)
         }
     }
 
     // MARK: - Supplements Section
 
-    private var supplementsSection: some View {
+    private func supplementsSection(vm: NutritionViewModel) -> some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
             SectionHeader(title: "Daily Stack")
-            ForEach(vm.supplements, id: \.1) { emoji, name, dose, timing in
+            ForEach(vm.supplements) { supplement in
                 HStack(spacing: Spacing.md) {
-                    Text(emoji).font(.title3)
+                    Text(supplement.emoji).font(.title3)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(name)
+                        Text(supplement.name)
                             .font(.appSubheadline)
                             .foregroundStyle(Color.appTextPrimary)
-                        Text("\(dose) — \(timing)")
+                        Text("\(supplement.dose) — \(supplement.timing)")
                             .font(.appCaption)
                             .foregroundStyle(Color.appTextSecondary)
                     }
                     Spacer()
                 }
                 .padding(.vertical, Spacing.xs)
-                if name != vm.supplements.last?.1 {
+                if supplement.id != vm.supplements.last?.id {
                     Divider()
                 }
             }
@@ -144,20 +169,21 @@ struct NutritionView: View {
 
     // MARK: - Cheat Day Card
 
-    private var cheatDayCard: some View {
-        VStack(alignment: .leading, spacing: Spacing.sm) {
-            HStack {
-                Text("🎉 Cheat Day — Sunday").font(.appHeadline).foregroundStyle(Color.appTextPrimary)
-            }
+    private func cheatDayCard(vm: NutritionViewModel) -> some View {
+        let rules = vm.cheatDayRules.isEmpty ? [
+            "Stay within reason — don't binge",
+            "Avoid alcohol — hurts recovery",
+            "Enjoy your meal, restart Monday",
+            "Suggested: Plov, shawarma, dessert 🍖",
+        ] : vm.cheatDayRules
+
+        return VStack(alignment: .leading, spacing: Spacing.sm) {
+            Text("🎉 Cheat Day — Sunday")
+                .font(.appHeadline)
+                .foregroundStyle(Color.appTextPrimary)
             Text("You've earned it. Here are the rules:")
                 .font(.appSubheadline)
                 .foregroundStyle(Color.appTextSecondary)
-            let rules = [
-                "Stay within reason — don't binge",
-                "Avoid alcohol — hurts recovery",
-                "Enjoy your meal, restart Monday",
-                "Suggested: Plov, shawarma, dessert 🍖",
-            ]
             ForEach(rules, id: \.self) { rule in
                 HStack(alignment: .top, spacing: Spacing.xs) {
                     Text("•").foregroundStyle(Color.appPrimary)
@@ -178,7 +204,7 @@ struct NutritionView: View {
 // MARK: - Meal Card
 
 private struct MealCardView: View {
-    let meal: NutritionViewModel.MealPlan
+    let meal: NutritionMeal
     let isExpanded: Bool
     let onTap: () -> Void
 
@@ -231,7 +257,7 @@ private struct MealCardView: View {
 private struct ExpandableFoodSection: View {
     let header: String
     let color: Color
-    let items: [(String, String)]
+    let items: [GuideFoodItem]
     @State private var isExpanded = false
 
     var body: some View {
@@ -252,11 +278,11 @@ private struct ExpandableFoodSection: View {
             if isExpanded {
                 Divider().padding(.horizontal, Spacing.md)
                 VStack(alignment: .leading, spacing: Spacing.xs) {
-                    ForEach(items, id: \.0) { name, stat in
+                    ForEach(items, id: \.name) { item in
                         HStack {
-                            Text(name).font(.appSubheadline).foregroundStyle(Color.appTextPrimary)
+                            Text(item.name).font(.appSubheadline).foregroundStyle(Color.appTextPrimary)
                             Spacer()
-                            Text(stat).font(.appCaption).foregroundStyle(Color.appTextSecondary)
+                            Text(item.stat).font(.appCaption).foregroundStyle(Color.appTextSecondary)
                         }
                         .padding(.vertical, 2)
                     }

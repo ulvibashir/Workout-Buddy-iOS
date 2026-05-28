@@ -6,12 +6,16 @@ struct DashboardView: View {
     @State private var vm: DashboardViewModel?
 
     var body: some View {
-        Group {
-            if let vm {
-                DashboardContent(vm: vm)
-            } else {
-                loadingPlaceholder
+        NavigationStack {
+            Group {
+                if let vm {
+                    DashboardContent(vm: vm)
+                } else {
+                    loadingPlaceholder
+                }
             }
+            .navigationBarHidden(true)
+            .background(Color.appBackground.ignoresSafeArea())
         }
         .task {
             guard vm == nil, let uid = authViewModel.currentUID else { return }
@@ -38,7 +42,6 @@ struct DashboardView: View {
                 SkeletonView().frame(height: 130).padding(.horizontal, Spacing.md)
             }
         }
-        .background(Color.appBackground.ignoresSafeArea())
     }
 }
 
@@ -49,30 +52,25 @@ private struct DashboardContent: View {
     @State private var appeared = false
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: Spacing.md) {
-                    // Header
-                    headerView
-                        .padding(.horizontal, Spacing.md)
+        ScrollView {
+            VStack(spacing: Spacing.md) {
+                headerView
+                    .padding(.horizontal, Spacing.md)
 
-                    if vm.isLoading {
-                        skeletonState
-                    } else {
-                        readinessCard
-                        primaryMetricsRow
-                        secondaryMetricsRow
-                        todayWorkoutCard
-                        weeklySection
-                        trendCharts
-                    }
+                if vm.isLoading {
+                    skeletonState
+                } else {
+                    readinessCard
+                    primaryMetricsRow
+                    secondaryMetricsRow
+                    todayWorkoutCard
+                    weeklySection
+                    trendCharts
                 }
-                .padding(.bottom, Spacing.xxxl)
             }
-            .refreshable { await vm.loadData() }
-            .background(Color.appBackground.ignoresSafeArea())
-            .navigationBarHidden(true)
+            .padding(.bottom, Spacing.xxxl)
         }
+        .refreshable { await vm.loadData() }
     }
 
     // MARK: - Header

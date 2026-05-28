@@ -15,11 +15,11 @@ final class DataSeeder {
     }
 
     func seedIfNeeded() async {
-        let flagPath = "users/\(uid)/meta/seeded_v2"
+        let flagPath = "users/\(uid)/meta/seeded_v3"
         if let snap = try? await db.document(flagPath).getDocument(), snap.exists { return }
         do {
             try await seedAll()
-            try await db.document("users/\(uid)/meta/seeded_v2").setData(["seededAt": ISO8601DateFormatter().string(from: Date())])
+            try await db.document("users/\(uid)/meta/seeded_v3").setData(["seededAt": ISO8601DateFormatter().string(from: Date())])
             print("[DataSeeder] Seeded successfully.")
         } catch {
             print("[DataSeeder] Error: \(error.localizedDescription)")
@@ -59,6 +59,8 @@ final class DataSeeder {
         // 3. Nutrition config
         batch.setData(nutritionTargets, forDocument: db.document("users/\(u)/nutritionConfig/targets"))
         batch.setData(["items": supplementsData], forDocument: db.document("users/\(u)/nutritionConfig/supplements"))
+        batch.setData(nutritionMealsData, forDocument: db.document("users/\(u)/nutritionConfig/meals"))
+        batch.setData(nutritionGuideData, forDocument: db.document("users/\(u)/nutritionConfig/guide"))
 
         // 4. Food database
         batch.setData(["foods": foodDatabase], forDocument: db.document("users/\(u)/foodDatabase/all"))
@@ -231,21 +233,76 @@ final class DataSeeder {
     // MARK: - Nutrition targets
     private var nutritionTargets: [String: Any] {
         [
-            "trainingDays": ["calories": 2900, "protein": 136, "carbs": 325, "fat": 75],
-            "restDays":     ["calories": 2300, "protein": 136, "carbs": 225, "fat": 70]
+            "trainingDays": ["calories": 2900, "protein": 136, "carbs": 325, "fat": 75, "water": 3.5],
+            "restDays":     ["calories": 2300, "protein": 136, "carbs": 225, "fat": 70, "water": 3.0]
+        ]
+    }
+
+    // MARK: - Nutrition meals
+    private var nutritionMealsData: [String: Any] {
+        let training: [[String: Any]] = [
+            meal("breakfast",  "🌅", "07:00", "Breakfast",     "Oatmeal 80g + banana + 3 eggs + honey, black tea", p: 29, c: 88, f: 10),
+            meal("snack1",     "🍎", "10:00", "Morning Snack", "Greek yogurt 200g + mixed nuts 30g",               p: 20, c: 18, f: 12),
+            meal("lunch",      "🌞", "13:00", "Lunch",         "Chicken breast 200g + rice 100g + vegetables",     p: 45, c: 80, f:  8),
+            meal("preworkout", "⚡", "17:30", "Pre-Workout",   "Banana + rice cake + coffee",                      p:  5, c: 45, f:  2),
+            meal("postworkout","💪", "19:30", "Post-Workout",  "Protein shake + banana",                           p: 30, c: 35, f:  3),
+            meal("dinner",     "🌙", "20:30", "Dinner",        "Salmon/beef 200g + sweet potato 150g + salad",     p: 45, c: 35, f: 20),
+        ]
+        let rest: [[String: Any]] = [
+            meal("breakfast", "🌅", "08:00", "Breakfast", "3 eggs + whole grain toast + avocado, black tea", p: 24, c: 30, f: 18),
+            meal("lunch",     "🌞", "13:00", "Lunch",     "Chicken breast 200g + quinoa 80g + vegetables",   p: 48, c: 65, f:  8),
+            meal("snack",     "🍎", "16:00", "Snack",     "Cottage cheese 150g + fruit",                     p: 18, c: 20, f:  3),
+            meal("dinner",    "🌙", "19:30", "Dinner",    "Fish 200g + roasted vegetables + salad",          p: 42, c: 25, f: 15),
+        ]
+        return ["training": training, "rest": rest]
+    }
+
+    // MARK: - Nutrition guide
+    private var nutritionGuideData: [String: Any] {
+        [
+            "eatFreely": [
+                guide("Chicken breast",   "48g protein/200g"),
+                guide("Oats",             "54g carbs/80g"),
+                guide("Eggs",             "6g protein each"),
+                guide("Greek yogurt",     "10g protein/100g"),
+                guide("Sweet potato",     "27g carbs/150g"),
+                guide("Rice",             "45g carbs/100g"),
+                guide("Salmon",           "40g protein/200g"),
+                guide("Tuna (canned)",    "30g protein/130g"),
+            ],
+            "eatModeration": [
+                guide("Avocado",             "Healthy fats, 9g/100g"),
+                guide("Nuts (mixed)",         "15g fat/30g"),
+                guide("Olive oil",            "14g fat/tbsp"),
+                guide("Dark chocolate 85%+",  "Limited — antioxidants"),
+                guide("Cheese",               "Calcium, moderate portion"),
+            ],
+            "avoid": [
+                guide("Alcohol",            "Destroys recovery"),
+                guide("Processed meat",     "High sodium/preservatives"),
+                guide("Sugary drinks",      "Empty calories"),
+                guide("White bread (excess)","Insulin spikes"),
+                guide("Fried food",         "Trans fats"),
+            ],
+            "cheatDayRules": [
+                "Stay within reason — don't binge",
+                "Avoid alcohol — hurts recovery",
+                "Enjoy your meal, restart Monday",
+                "Suggested: Plov, shawarma, dessert 🍖",
+            ]
         ]
     }
 
     // MARK: - Supplements
     private var supplementsData: [[String: Any]] {
         [
-            ["id": "creatine",   "name": "Creatine Monohydrate", "dose": "5g",               "timing": "Any time — consistency matters"],
-            ["id": "vit_d3",     "name": "Vitamin D3 + K2",      "dose": "3000 IU D3+100mcg K2", "timing": "Morning with fat source"],
-            ["id": "magnesium",  "name": "Magnesium Glycinate",   "dose": "300-400mg",         "timing": "Before bed"],
-            ["id": "omega3",     "name": "Omega 3 Fish Oil",      "dose": "2-3g EPA+DHA",      "timing": "With any meal"],
-            ["id": "vit_b",      "name": "Vitamin B Complex",     "dose": "1 tablet",          "timing": "Morning with food"],
-            ["id": "iron",       "name": "Iron Bisglycinate",     "dose": "As prescribed",     "timing": "Away from omeprazole"],
-            ["id": "omeprazole", "name": "Omeprazole",            "dose": "As prescribed",     "timing": "30 min before meal"],
+            ["id": "creatine",   "emoji": "💊", "name": "Creatine Monohydrate", "dose": "5g",                   "timing": "Any time — consistency matters"],
+            ["id": "vit_d3",     "emoji": "☀️", "name": "Vitamin D3 + K2",      "dose": "3000 IU D3+100mcg K2", "timing": "Morning with fat source"],
+            ["id": "magnesium",  "emoji": "🌙", "name": "Magnesium Glycinate",   "dose": "300-400mg",             "timing": "Before bed"],
+            ["id": "omega3",     "emoji": "🐟", "name": "Omega 3 Fish Oil",      "dose": "2-3g EPA+DHA",          "timing": "With any meal"],
+            ["id": "vit_b",      "emoji": "🅱️", "name": "Vitamin B Complex",     "dose": "1 tablet",              "timing": "Morning with food"],
+            ["id": "iron",       "emoji": "💊", "name": "Iron Bisglycinate",     "dose": "As prescribed",         "timing": "Away from omeprazole"],
+            ["id": "omeprazole", "emoji": "💊", "name": "Omeprazole",            "dose": "As prescribed",         "timing": "30 min before meal"],
         ]
     }
 
@@ -350,5 +407,13 @@ final class DataSeeder {
 
     private func fd(_ id: String, _ name: String, unit: String, p: Double, c: Double, f: Double, cal: Double) -> [String: Any] {
         ["id": id, "name": name, "unit": unit, "unitAmount": 1.0, "protein": p, "carbs": c, "fat": f, "calories": cal]
+    }
+
+    private func meal(_ id: String, _ emoji: String, _ time: String, _ name: String, _ foods: String, p: Int, c: Int, f: Int) -> [String: Any] {
+        ["id": id, "emoji": emoji, "time": time, "name": name, "foods": foods, "protein": p, "carbs": c, "fat": f]
+    }
+
+    private func guide(_ name: String, _ stat: String) -> [String: Any] {
+        ["name": name, "stat": stat]
     }
 }

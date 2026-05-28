@@ -49,7 +49,7 @@ struct FoodItem: Codable, Identifiable {
     }
 }
 
-// MARK: - Macro targets (matches web Firestore structure with "fat" key)
+// MARK: - Macro targets
 struct NutritionTargets: Codable {
     var trainingDays: MacroTarget
     var restDays:     MacroTarget
@@ -58,21 +58,57 @@ struct NutritionTargets: Codable {
         var calories: Int
         var protein:  Int
         var carbs:    Int
-        var fat:      Int   // web uses "fat" not "fats"
+        var fat:      Int
+        var water:    Double = 3.0
     }
-}
-
-// MARK: - Supplement (matches web Firestore structure)
-struct Supplement: Codable, Identifiable {
-    var id:   String
-    var name: String
-    var dose: String
-    var timing: String
 }
 
 extension NutritionTargets {
     static let `default` = NutritionTargets(
-        trainingDays: MacroTarget(calories: 2900, protein: 136, carbs: 325, fat: 75),
-        restDays:     MacroTarget(calories: 2300, protein: 136, carbs: 225, fat: 70)
+        trainingDays: MacroTarget(calories: 2900, protein: 136, carbs: 325, fat: 75, water: 3.5),
+        restDays:     MacroTarget(calories: 2300, protein: 136, carbs: 225, fat: 70, water: 3.0)
     )
+}
+
+// MARK: - Meal plan
+struct NutritionMeal: Codable, Identifiable {
+    var id:      String
+    var emoji:   String
+    var time:    String
+    var name:    String
+    var foods:   String
+    var protein: Int
+    var carbs:   Int
+    var fat:     Int
+}
+
+struct NutritionMealsDoc: Codable {
+    var training: [NutritionMeal]
+    var rest:     [NutritionMeal]
+}
+
+// MARK: - Food guide
+struct GuideFoodItem: Codable {
+    var name: String
+    var stat: String
+}
+
+struct NutritionGuideDoc: Codable {
+    var eatFreely:      [GuideFoodItem]
+    var eatModeration:  [GuideFoodItem]
+    var avoid:          [GuideFoodItem]
+    var cheatDayRules:  [String]
+}
+
+// MARK: - Supplement
+struct Supplement: Codable, Identifiable {
+    var id:     String
+    var emoji:  String = "💊"
+    var name:   String
+    var dose:   String
+    var timing: String
+}
+
+struct SupplementsDoc: Codable {
+    var items: [Supplement]
 }
