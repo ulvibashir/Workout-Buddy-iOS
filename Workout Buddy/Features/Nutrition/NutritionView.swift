@@ -7,7 +7,7 @@ struct NutritionView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if let vm {
+                if let vm, !vm.isLoading {
                     loadedContent(vm: vm)
                 } else {
                     nutritionSkeleton
@@ -30,12 +30,19 @@ struct NutritionView: View {
     private var nutritionSkeleton: some View {
         ScrollView {
             VStack(spacing: Spacing.md) {
-                SkeletonView().frame(height: 40)
-                SkeletonView().frame(height: 100)
-                SkeletonView().frame(height: 60)
-                SkeletonView().frame(height: 60)
-                SkeletonView().frame(height: 60)
-                SkeletonView().frame(height: 120)
+                SkeletonView().frame(height: 44)
+                SkeletonView().frame(height: 96)
+                SkeletonView().frame(height: 20).frame(maxWidth: 150, alignment: .leading)
+                SkeletonView().frame(height: 56)
+                SkeletonView().frame(height: 56)
+                SkeletonView().frame(height: 56)
+                SkeletonView().frame(height: 56)
+                SkeletonView().frame(height: 20).frame(maxWidth: 120, alignment: .leading)
+                SkeletonView().frame(height: 52)
+                SkeletonView().frame(height: 52)
+                SkeletonView().frame(height: 52)
+                SkeletonView().frame(height: 180)
+                SkeletonView().frame(height: 130)
             }
             .padding(.horizontal, Spacing.md)
             .padding(.top, Spacing.md)
@@ -58,6 +65,7 @@ struct NutritionView: View {
             .padding(.horizontal, Spacing.md)
             .padding(.bottom, Spacing.xxxl)
         }
+        .refreshable { await vm.refresh() }
     }
 
     // MARK: - Day Type Header
@@ -82,18 +90,19 @@ struct NutritionView: View {
     // MARK: - Macro Targets Card
 
     private func macroTargetsCard(vm: NutritionViewModel) -> some View {
-        let t = vm.todayTargets
-        return VStack(spacing: Spacing.md) {
+        VStack(spacing: Spacing.md) {
             HStack(spacing: 0) {
-                macroColumn("Protein", "\(t.protein)g", .appInfo)
+                macroColumn("Protein", vm.todayTargets.map { "\($0.protein)g" } ?? "—", .appInfo)
                 Divider().frame(height: 50)
-                macroColumn("Carbs", "\(t.carbs)g", .appPrimary)
+                macroColumn("Carbs",   vm.todayTargets.map { "\($0.carbs)g"   } ?? "—", .appPrimary)
                 Divider().frame(height: 50)
-                macroColumn("Fat", "\(t.fat)g", .appWarning)
+                macroColumn("Fat",     vm.todayTargets.map { "\($0.fat)g"     } ?? "—", .appWarning)
             }
-            Text("Calories: ~\(t.calories) kcal  |  Water: \(t.water, specifier: "%.1f")L")
-                .font(.appCaption)
-                .foregroundStyle(Color.appTextSecondary)
+            if let t = vm.todayTargets {
+                Text("Calories: ~\(t.calories) kcal  |  Water: \(t.water, specifier: "%.1f")L")
+                    .font(.appCaption)
+                    .foregroundStyle(Color.appTextSecondary)
+            }
         }
         .padding(Spacing.md)
         .background(Color.appSurface)
@@ -174,7 +183,6 @@ struct NutritionView: View {
             "Stay within reason — don't binge",
             "Avoid alcohol — hurts recovery",
             "Enjoy your meal, restart Monday",
-            "Suggested: Plov, shawarma, dessert 🍖",
         ] : vm.cheatDayRules
 
         return VStack(alignment: .leading, spacing: Spacing.sm) {

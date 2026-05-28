@@ -21,6 +21,11 @@ struct MainTabView: View {
                         Label("Workout", systemImage: "dumbbell.fill")
                     }
 
+//                ProgressTabView()
+//                    .tabItem {
+//                        Label("Progress", systemImage: "chart.line.uptrend.xyaxis")
+//                    }
+
                 NutritionView()
                     .tabItem {
                         Label("Nutrition", systemImage: "fork.knife")

@@ -63,12 +63,6 @@ struct NutritionTargets: Codable {
     }
 }
 
-extension NutritionTargets {
-    static let `default` = NutritionTargets(
-        trainingDays: MacroTarget(calories: 2900, protein: 136, carbs: 325, fat: 75, water: 3.5),
-        restDays:     MacroTarget(calories: 2300, protein: 136, carbs: 225, fat: 70, water: 3.0)
-    )
-}
 
 // MARK: - Meal plan
 struct NutritionMeal: Codable, Identifiable {
