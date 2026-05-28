@@ -1,111 +1,90 @@
 import Foundation
-import Combine
+import FirebaseAuth
+import FirebaseFirestore
+import GoogleSignIn
+
+// MARK: - AuthViewModel
+// Manages Google Sign In / Firebase authentication state.
+// NOTE: Add GoogleSignIn-iOS SPM package, then import GoogleSignIn and uncomment the Google sign-in method.
 
 @MainActor
-final class ProgressViewModel: ObservableObject {
+@Observable
+final class AuthViewModel {
 
-    @Published var metrics:      [BodyMetric] = []
-    @Published var goals:        [SixMonthGoal] = []
-    @Published var profile:      UserProfile = UserProfile()
-    @Published var isLoading:    Bool = true
-    @Published var showLogSheet: Bool = false
+    var state: AuthState = .loading
+    var error: String?
 
-    // Form state for manual logging
-    @Published var formWeight: String = ""
-    @Published var formRHR:    String = ""
-    @Published var formHRV:    String = ""
-    @Published var formVO2Max: String = ""
+    nonisolated(unsafe) private var authListener: AuthStateDidChangeListenerHandle?
 
-    private let metricsRepo:  BodyMetricsRepository
-    private let runningRepo:  RunningRepository
-    private let profileRepo:  ProfileRepository
-    private let healthKit:    HealthKitService
-    private var tasks: [Task<Void, Never>] = []
-
-    var todayKey: String { Date.todayKey }
-
-    init(container: AppContainer) {
-        metricsRepo = container.bodyMetricsRepository
-        runningRepo = container.runningRepository
-        profileRepo = container.profileRepository
-        healthKit   = container.healthKitService
+    init() {
+        listenToAuthState()
     }
 
-    var sortedMetrics: [BodyMetric] { metrics.sorted { ($0.id ?? "") < ($1.id ?? "") } }
-    var latestMetric:  BodyMetric?  { sortedMetrics.last }
+    // MARK: - Auth State
 
-    // MARK: - Lifecycle
-    func start() {
-        tasks.forEach { $0.cancel() }
-        tasks = [
-            Task { await listenMetrics() },
-            Task { await loadGoals() },
-            Task { await listenProfile() }
-        ]
-    }
-
-    func stop() { tasks.forEach { $0.cancel() }; tasks = [] }
-
-    // MARK: - Save manual metric
-    func saveMetric() {
-        let metric = BodyMetric(weight: formWeight, rhr: formRHR, hrv: formHRV, vo2max: formVO2Max)
-        let date   = todayKey
-        showLogSheet = false
-        resetForm()
-        Task { try? await metricsRepo.save(metric: metric, forDate: date) }
-    }
-
-    // MARK: - Sync from HealthKit
-    func syncFromHealthKit() {
-        Task {
-            let metric = await healthKit.buildLatestBodyMetric()
-            guard !metric.weight.isEmpty || !metric.rhr.isEmpty || !metric.hrv.isEmpty else { return }
-            try? await metricsRepo.save(metric: metric, forDate: todayKey)
+    private func listenToAuthState() {
+        authListener = Auth.auth().addStateDidChangeListener { [weak self] _, user in
+            guard let self else { return }
+            Task { @MainActor in
+                if let user {
+                    self.state = .authenticated(uid: user.uid)
+                } else {
+                    self.state = .unauthenticated
+                }
+            }
         }
     }
 
-    func resetForm() {
-        formWeight = ""; formRHR = ""; formHRV = ""; formVO2Max = ""
-    }
+    // MARK: - Sign In with Google
+    // Requires GoogleSignIn-iOS SPM package from https://github.com/google/GoogleSignIn-iOS
+    // After adding the package, uncomment the code below.
 
-    // MARK: - Goal progress
-    func progress(for goal: SixMonthGoal) -> Double {
-        let current = currentValue(for: goal)
-        let range   = abs(goal.month6 - goal.start)
-        guard range > 0 else { return 0 }
-        let moved   = goal.direction == "increase"
-            ? current - goal.start
-            : goal.start - current
-        return max(0, min(1, moved / range))
-    }
+    func signInWithGoogle() async {
+        guard let topVC = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first?.windows.first?.rootViewController
+        else { return }
 
-    private func currentValue(for goal: SixMonthGoal) -> Double {
-        let b = profile.baselineMetrics
-        switch goal.metric {
-        case "Weight (kg)":          return latestMetric?.weightValue ?? b.weight
-        case "Resting HR (bpm)":     return latestMetric?.rhrValue    ?? Double(b.rhr)
-        case "HRV (ms)":             return latestMetric?.hrvValue     ?? Double(b.hrv)
-        case "VO2 Max (ml/kg/min)":  return latestMetric?.vo2maxValue  ?? b.vo2max
-        case "Pull-up Max (reps)":   return Double(b.pullUpMax)
-        default:                     return goal.start
+        do {
+            let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: topVC)
+            guard let idToken = result.user.idToken?.tokenString else { return }
+            let credential = GoogleAuthProvider.credential(
+                withIDToken: idToken,
+                accessToken: result.user.accessToken.tokenString
+            )
+            try await Auth.auth().signIn(with: credential)
+            error = nil
+        } catch {
+            self.error = error.localizedDescription
         }
     }
 
-    // MARK: - Private listeners
-    private func listenMetrics() async {
-        for await result in metricsRepo.listenAll() {
-            if case .success(let items) = result { metrics = items }
-            isLoading = false
+    // MARK: - Sign Out
+
+    func signOut() {
+        do {
+            try Auth.auth().signOut()
+        } catch {
+            self.error = error.localizedDescription
         }
     }
 
-    private func loadGoals() async {
-        goals = (try? await runningRepo.fetchSixMonthGoals()) ?? []
+    // MARK: - Helpers
+
+    var currentUID: String? { state.uid }
+
+    func userPath(_ collection: String) -> String {
+        guard let uid = currentUID else { return "users/unknown/\(collection)" }
+        return "users/\(uid)/\(collection)"
     }
 
-    private func listenProfile() async {
-        for await result in profileRepo.listenProfile() {
-            if case .success(let p) = result { profile = p ?? UserProfile() }
+    func userDoc(_ collection: String, _ doc: String) -> String {
+        "\(userPath(collection))/\(doc)"
+    }
+
+    deinit {
+        if let listener = authListener {
+            Auth.auth().removeStateDidChangeListener(listener)
         }
     }
 }

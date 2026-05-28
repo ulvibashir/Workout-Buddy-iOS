@@ -8,12 +8,12 @@ final class BodyMetricsRepository {
         self.service = service
     }
 
-    func listenAll() -> AsyncStream<Result<[BodyMetric], AppError>> {
+    func listenAll() -> AsyncStream<Result<[HealthMetrics], AppError>> {
         let path = "\(AppConstants.Firestore.userRoot)/\(AppConstants.Firestore.Collections.bodyMetrics)"
         return service.listenCollection(path: path)
     }
 
-    func save(metric: BodyMetric, forDate date: String) async throws {
+    func save(metric: HealthMetrics, forDate date: String) async throws {
         let path = AppConstants.Firestore.path(AppConstants.Firestore.Collections.bodyMetrics, date)
         try await service.setDocument(path: path, value: metric)
     }

@@ -1,298 +1,474 @@
 import SwiftUI
+import Charts
 
-// Entry point — extracts container from environment and passes to VM
 struct DashboardView: View {
-    @EnvironmentObject private var container: AppContainer
+    @Environment(AuthViewModel.self) private var authViewModel
+    @State private var vm: DashboardViewModel?
 
     var body: some View {
-        _DashboardView(vm: DashboardViewModel(container: container))
+        Group {
+            if let vm {
+                DashboardContent(vm: vm)
+            } else {
+                loadingPlaceholder
+            }
+        }
+        .task {
+            guard vm == nil, let uid = authViewModel.currentUID else { return }
+            let m = DashboardViewModel(uid: uid)
+            vm = m
+            await m.loadData()
+        }
+    }
+
+    private var loadingPlaceholder: some View {
+        ScrollView {
+            VStack(spacing: Spacing.md) {
+                SkeletonView().frame(height: 28).padding(.horizontal, Spacing.md).padding(.top, Spacing.xl)
+                SkeletonView().frame(height: 100).padding(.horizontal, Spacing.md)
+                HStack(spacing: Spacing.xs) {
+                    SkeletonView(); SkeletonView(); SkeletonView()
+                }
+                .frame(height: 110).padding(.horizontal, Spacing.md)
+                HStack(spacing: Spacing.xs) {
+                    SkeletonView(); SkeletonView(); SkeletonView()
+                }
+                .frame(height: 110).padding(.horizontal, Spacing.md)
+                SkeletonView().frame(height: 65).padding(.horizontal, Spacing.md)
+                SkeletonView().frame(height: 130).padding(.horizontal, Spacing.md)
+            }
+        }
+        .background(Color.appBackground.ignoresSafeArea())
     }
 }
 
-private struct _DashboardView: View {
-    @StateObject var vm: DashboardViewModel
+// MARK: - Main Content
+
+private struct DashboardContent: View {
+    @Bindable var vm: DashboardViewModel
+    @State private var appeared = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 12) {
-                    quoteCard
-                    if let workout = vm.todayWorkout { todayWorkoutCard(workout) }
-                    bodyMetricsGrid
-                    summaryStatsGrid
-                    weekOverview
-                    if !vm.recentRuns.isEmpty    { recentRunsCard    }
-                    if !vm.recentPullUps.isEmpty { recentPullUpsCard }
-                    marathonCard
+                VStack(spacing: Spacing.md) {
+                    // Header
+                    headerView
+                        .padding(.horizontal, Spacing.md)
+
+                    if vm.isLoading {
+                        skeletonState
+                    } else {
+                        readinessCard
+                        primaryMetricsRow
+                        secondaryMetricsRow
+                        todayWorkoutCard
+                        weeklySection
+                        trendCharts
+                    }
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 20)
+                .padding(.bottom, Spacing.xxxl)
             }
-            .navigationTitle(vm.profile.name)
-            .navigationBarTitleDisplayMode(.large)
-            .background(AppTheme.background.ignoresSafeArea())
+            .refreshable { await vm.loadData() }
+            .background(Color.appBackground.ignoresSafeArea())
+            .navigationBarHidden(true)
         }
-        .onAppear  { vm.start() }
-        .onDisappear { vm.stop() }
     }
 
-    // MARK: - Quote banner
-    private var quoteCard: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Rectangle()
-                .frame(width: 3)
-                .foregroundColor(AppTheme.accent)
-            Text("\"\(vm.todayQuote)\"")
-                .font(.caption)
-                .foregroundColor(AppTheme.textMuted)
-                .italic()
-                .padding(.vertical, 8)
+    // MARK: - Header
+
+    private var headerView: some View {
+        VStack(alignment: .leading, spacing: Spacing.xxs) {
+            Text("\(vm.greeting), \(vm.userProfile.name) 👋")
+                .font(.appTitle2)
+                .foregroundStyle(Color.appTextPrimary)
+            Text(Date.today.formatted(.dateTime.weekday(.wide).month(.wide).day()))
+                .font(.appSubheadline)
+                .foregroundStyle(Color.appTextSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, Spacing.md)
+    }
+
+    // MARK: - Skeleton
+
+    private var skeletonState: some View {
+        VStack(spacing: Spacing.md) {
+            SkeletonView().frame(height: 100).padding(.horizontal, Spacing.md)
+            HStack(spacing: Spacing.xs) {
+                SkeletonView(); SkeletonView(); SkeletonView()
+            }
+            .frame(height: 110).padding(.horizontal, Spacing.md)
+            HStack(spacing: Spacing.xs) {
+                SkeletonView(); SkeletonView(); SkeletonView()
+            }
+            .frame(height: 110).padding(.horizontal, Spacing.md)
+            SkeletonView().frame(height: 65).padding(.horizontal, Spacing.md)
+            SkeletonView().frame(height: 130).padding(.horizontal, Spacing.md)
+        }
+    }
+
+    // MARK: - Readiness Card
+
+    private var readinessCard: some View {
+        HStack(spacing: Spacing.xl) {
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text("\(vm.readinessScore)")
+                    .font(.appMetricLarge)
+                    .foregroundStyle(readinessColor)
+                    .contentTransition(.numericText())
+                Text("Readiness")
+                    .font(.appCaption)
+                    .foregroundStyle(Color.appTextSecondary)
+                Text(vm.readinessStatus.label)
+                    .font(.appFootnote)
+                    .foregroundStyle(readinessColor)
+            }
             Spacer()
-        }
-        .padding(.horizontal, 12)
-        .background(AppTheme.cardBackground)
-        .cornerRadius(10)
-    }
-
-    // MARK: - Today's workout
-    private func todayWorkoutCard(_ workout: WorkoutDay) -> some View {
-        let done  = vm.completedDays[vm.currentDayKey] ?? false
-        let color = Color(hex: workout.color)
-        return NavigationLink(destination: WorkoutView()) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("TODAY'S SESSION")
-                        .font(.caption2).tracking(0.8)
-                        .foregroundColor(AppTheme.textMuted)
-                    Text(workout.name)
-                        .font(.title3).bold()
-                    HStack(spacing: 4) {
-                        Text(workout.duration)
-                        Text("·")
-                        Text(workout.intensity + " intensity")
-                        if done { Text("· Completed ✓").foregroundColor(AppTheme.accentGreen) }
-                    }
-                    .font(.caption).foregroundColor(AppTheme.textMuted)
-                }
-                Spacer()
-                Image(systemName: "bolt.fill").foregroundColor(color).font(.title2)
+            ZStack {
+                Circle()
+                    .stroke(Color.appSurfaceRaised, lineWidth: 10)
+                    .frame(width: 80, height: 80)
+                Circle()
+                    .trim(from: 0, to: Double(vm.readinessScore) / 100)
+                    .stroke(readinessColor, style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                    .frame(width: 80, height: 80)
+                    .rotationEffect(.degrees(-90))
+                    .animation(.spring(), value: vm.readinessScore)
             }
-            .padding(16)
-            .background(AppTheme.cardBackground)
-            .cornerRadius(14)
         }
-        .buttonStyle(.plain)
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .inset(by: 0.5)
-                .stroke(color.opacity(0.4), lineWidth: 1)
-        )
-        .overlay(
-            HStack {
-                RoundedRectangle(cornerRadius: 4).frame(width: 4).foregroundColor(color)
-                Spacer()
+        .padding(Spacing.md)
+        .background(Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: Radius.xl))
+        .padding(.horizontal, Spacing.md)
+    }
+
+    private var readinessColor: Color {
+        switch vm.readinessStatus {
+        case .ready:   return .appSuccess
+        case .caution: return .appWarning
+        case .rest:    return .appDanger
+        }
+    }
+
+    // MARK: - Primary Metrics (HRV, RHR, VO2Max)
+
+    private var primaryMetricsRow: some View {
+        HStack(spacing: Spacing.xs) {
+            MetricCard(
+                icon: "waveform.path.ecg",
+                value: vm.todayMetrics?.hrv.map { String(Int($0)) } ?? "—",
+                unit: "ms",
+                label: "HRV",
+                color: .appSuccess,
+                isLoading: vm.isLoading
+            )
+            MetricCard(
+                icon: "heart.fill",
+                value: vm.todayMetrics?.rhr.map { String(Int($0)) } ?? "—",
+                unit: "bpm",
+                label: "RHR",
+                color: .appDanger,
+                isLoading: vm.isLoading
+            )
+            MetricCard(
+                icon: "lungs.fill",
+                value: vm.todayMetrics?.vo2max.map { String(format: "%.1f", $0) } ?? "—",
+                unit: "ml/kg/min",
+                label: "VO2 Max",
+                color: .appInfo,
+                isLoading: vm.isLoading
+            )
+        }
+        .frame(height: 110)
+        .padding(.horizontal, Spacing.md)
+    }
+
+    // MARK: - Secondary Metrics (Sleep, Steps, Calories)
+
+    private var secondaryMetricsRow: some View {
+        HStack(spacing: Spacing.xs) {
+            MetricCard(
+                icon: "moon.stars.fill",
+                value: vm.todayMetrics?.sleepHours.map { String(format: "%.1f", $0) } ?? "—",
+                unit: "hrs",
+                label: "Sleep",
+                color: .purple,
+                isLoading: vm.isLoading
+            )
+            MetricCard(
+                icon: "figure.walk",
+                value: vm.todayMetrics?.steps.map { "\($0)" } ?? "—",
+                unit: "steps",
+                label: "Steps",
+                color: .appInfo,
+                isLoading: vm.isLoading
+            )
+            MetricCard(
+                icon: "flame.fill",
+                value: vm.todayMetrics?.activeCalories.map { String(Int($0)) } ?? "—",
+                unit: "kcal",
+                label: "Calories",
+                color: .orange,
+                isLoading: vm.isLoading
+            )
+        }
+        .frame(height: 110)
+        .padding(.horizontal, Spacing.md)
+    }
+
+    // MARK: - Today's Workout Preview
+
+    private var todayWorkoutCard: some View {
+        let workout = vm.todayWorkout
+        let status = workout?.status ?? .pending
+        let dayName = Date.today.weekdayName
+        let dayColor = Color.dayColor(for: dayName)
+
+        return HStack(spacing: Spacing.md) {
+            Circle()
+                .fill(dayColor)
+                .frame(width: 12, height: 12)
+
+            VStack(alignment: .leading, spacing: Spacing.xxs) {
+                Text(workout?.workoutName ?? "Today's Workout")
+                    .font(.appHeadline)
+                    .foregroundStyle(Color.appTextPrimary)
+                Text(dayName.capitalized)
+                    .font(.appCaption)
+                    .foregroundStyle(Color.appTextSecondary)
+            }
+
+            Spacer()
+
+            workoutStatusBadge(status: status)
+        }
+        .padding(Spacing.md)
+        .background(
+            ZStack {
+                Color.appSurface
+                dayColor.opacity(0.08)
             }
         )
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.xl))
+        .padding(.horizontal, Spacing.md)
     }
 
-    // MARK: - Metric cards row
-    private var bodyMetricsGrid: some View {
-        let m = vm.latestMetric
-        let b = vm.profile.baselineMetrics
-        return HStack(spacing: 8) {
-            SmallMetricCell(label: "Weight", value: m?.weight ?? String(b.weight), unit: "kg",  color: AppTheme.accentOrange, icon: "scalemass.fill")
-            SmallMetricCell(label: "RHR",    value: m?.rhr    ?? String(b.rhr),    unit: "bpm", color: AppTheme.accent,       icon: "heart.fill")
-            SmallMetricCell(label: "HRV",    value: m?.hrv    ?? String(b.hrv),    unit: "ms",  color: AppTheme.accentGreen,  icon: "waveform.path.ecg")
+    @ViewBuilder
+    private func workoutStatusBadge(status: WorkoutStatus) -> some View {
+        switch status {
+        case .pending:
+            HStack(spacing: 4) {
+                Text("Today")
+                    .font(.appFootnote)
+                Image(systemName: "chevron.right")
+                    .font(.appCaption)
+            }
+            .foregroundStyle(Color.appPrimary)
+        case .completed:
+            Label("Done ✓", systemImage: "checkmark.circle.fill")
+                .font(.appFootnote)
+                .foregroundStyle(Color.appSuccess)
+        case .postponed:
+            Text("Postponed")
+                .font(.appFootnote)
+                .foregroundStyle(Color.appWarning)
+        case .missed:
+            Text("Missed")
+                .font(.appFootnote)
+                .foregroundStyle(Color.appDanger)
         }
     }
 
-    // MARK: - Summary stats
-    private var summaryStatsGrid: some View {
-        HStack(spacing: 8) {
-            StatsCell(label: "Workouts/wk", value: "\(vm.completedThisWeek)", unit: "done", color: AppTheme.accentPurple)
-            StatsCell(label: "Pull-up Max",  value: "\(vm.allTimeMaxPullUp)",  unit: "reps", color: AppTheme.accent)
-            StatsCell(label: "Total km",     value: "\(Int(vm.totalRunKm))",   unit: "km",   color: AppTheme.accentBlue)
+    // MARK: - Weekly Section
+
+    private var weeklySection: some View {
+        VStack(spacing: Spacing.md) {
+            SectionHeader(title: "This Week")
+                .padding(.horizontal, Spacing.md)
+
+            weeklyWorkoutStrip
+            weeklyRunStats
         }
     }
 
-    // MARK: - Week overview
-    private var weekOverview: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("THIS WEEK")
-                .font(.caption2).tracking(0.8)
-                .foregroundColor(AppTheme.textMuted)
-            HStack(spacing: 6) {
-                ForEach(AppConstants.Firestore.WeekDays.all, id: \.self) { day in
-                    let wd      = vm.workoutDays[day]
-                    let done    = vm.completedDays[day] ?? false
-                    let isToday = day == vm.currentDayKey
-                    let color   = wd.map { Color(hex: $0.color) } ?? AppTheme.border
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(done ? color : isToday ? color.opacity(0.33) : color.opacity(0.13))
-                        .frame(height: 40)
-                        .overlay(
-                            VStack(spacing: 1) {
-                                Text(day.prefix(1).uppercased()).font(.caption2).bold()
-                                if done { Text("✓").font(.system(size: 8)) }
+    private var weeklyWorkoutStrip: some View {
+        let days = Date.currentWeekDays()
+        return VStack(spacing: Spacing.sm) {
+            HStack(spacing: Spacing.xs) {
+                ForEach(days, id: \.self) { day in
+                    let log = vm.weeklyWorkouts.first(where: { $0.date == day.dateKey })
+                    let isToday = day.isToday
+                    let dayColor = Color.dayColor(for: day.weekdayName)
+                    let status = log?.status
+
+                    VStack(spacing: Spacing.xxs) {
+                        Text(day.dayLetter)
+                            .font(.appCaption2)
+                            .foregroundStyle(Color.appTextSecondary)
+
+                        ZStack {
+                            Circle()
+                                .fill(circleBackground(status: status, isToday: isToday, dayColor: dayColor))
+                                .frame(width: 36, height: 36)
+                            if status == .completed {
+                                Text("✓").font(.appCaption).foregroundStyle(.white)
+                            } else if status == .missed {
+                                Text("✗").font(.appCaption).foregroundStyle(.white)
+                            } else {
+                                Text(day.dayNumber)
+                                    .font(.appSubheadline)
+                                    .fontWeight(isToday ? .bold : .regular)
+                                    .foregroundStyle(isToday ? dayColor : Color.appTextPrimary)
                             }
-                            .foregroundColor(done || isToday ? .white : color)
-                        )
+                        }
                         .overlay(
-                            isToday && !done
-                                ? RoundedRectangle(cornerRadius: 8).stroke(color, lineWidth: 1)
-                                : nil
+                            Circle()
+                                .stroke(isToday ? dayColor : Color.clear, lineWidth: 2)
                         )
-                }
-            }
-        }
-        .padding(14)
-        .background(AppTheme.cardBackground)
-        .cornerRadius(14)
-    }
-
-    // MARK: - Recent runs
-    private var recentRunsCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Recent Runs").font(.subheadline).bold()
-                Spacer()
-                NavigationLink("See all", destination: RunningView())
-                    .font(.caption).foregroundColor(AppTheme.accentBlue)
-            }
-            ForEach(vm.recentRuns) { run in
-                HStack {
-                    VStack(alignment: .leading) {
-                        Text("\(run.distance, specifier: "%.1f") km").font(.callout).bold()
-                        Text(run.date).font(.caption).foregroundColor(AppTheme.textMuted)
                     }
-                    Spacer()
-                    VStack(alignment: .trailing) {
-                        if !run.avgPace.isEmpty {
-                            Text("\(run.avgPace)/km").font(.callout).bold().foregroundColor(AppTheme.accentBlue)
-                        }
-                        if run.avgHR > 0 {
-                            Text("\(run.avgHR) bpm").font(.caption).foregroundColor(AppTheme.textMuted)
-                        }
-                    }
-                }
-                .padding(.vertical, 4)
-                if run.id != vm.recentRuns.last?.id { Divider().background(AppTheme.border) }
-            }
-        }
-        .padding(14)
-        .background(AppTheme.cardBackground)
-        .cornerRadius(14)
-    }
-
-    // MARK: - Recent pull-ups
-    private var recentPullUpsCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Recent Pull-ups").font(.subheadline).bold()
-                Spacer()
-                NavigationLink("See all", destination: PullUpsView())
-                    .font(.caption).foregroundColor(AppTheme.accent)
-            }
-            ForEach(vm.recentPullUps) { session in
-                HStack {
-                    Text(session.id ?? "").font(.caption).foregroundColor(AppTheme.textMuted)
-                    Spacer()
-                    Text("\(session.maxReps) max").font(.callout).bold().foregroundColor(AppTheme.accent)
-                    Text("\(session.totalReps) total").font(.caption).foregroundColor(AppTheme.textMuted)
-                }
-                .padding(.vertical, 4)
-                if session.id != vm.recentPullUps.last?.id { Divider().background(AppTheme.border) }
-            }
-        }
-        .padding(14)
-        .background(AppTheme.cardBackground)
-        .cornerRadius(14)
-    }
-
-    // MARK: - Marathon achievement
-    private var marathonCard: some View {
-        let m = vm.profile.achievements.bakuMarathon2026
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Image(systemName: "trophy.fill").foregroundColor(AppTheme.accentOrange)
-                Text("Baku Marathon 2026 — \(m.date)").font(.subheadline).bold()
-            }
-            LazyVGrid(columns: Array(repeating: .init(.flexible()), count: 3), spacing: 8) {
-                ForEach([
-                    ("Distance",  "\(m.distance)km"),
-                    ("Time",      m.officialTime),
-                    ("Avg Pace",  "\(m.avgPace)/km"),
-                    ("Avg HR",    "\(m.avgHR) bpm"),
-                    ("Elevation", "\(m.elevation)m"),
-                    ("Calories",  "\(m.calories.formatted())")
-                ], id: \.0) { item in
-                    VStack(spacing: 2) {
-                        Text(item.1).font(.callout).bold()
-                        Text(item.0).font(.caption2).foregroundColor(AppTheme.textMuted)
-                    }
-                    .padding(8)
                     .frame(maxWidth: .infinity)
-                    .background(AppTheme.cardSecondary)
-                    .cornerRadius(8)
                 }
             }
-            Text("Sprint finish km 40-42 · First ever marathon")
-                .font(.caption).foregroundColor(AppTheme.accentOrange).italic()
-        }
-        .padding(14)
-        .background(AppTheme.cardBackground)
-        .cornerRadius(14)
-        .overlay(
-            VStack {
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(AppTheme.accentOrange)
-                    .frame(height: 3)
-                Spacer()
+
+            let completed = vm.weeklyCompletedCount
+            let total = max(1, vm.weeklyTotalTrainingDays)
+            VStack(spacing: Spacing.xxs) {
+                Text("\(completed)/\(total) workouts completed this week")
+                    .font(.appCaption)
+                    .foregroundStyle(Color.appTextSecondary)
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Color.appSurfaceRaised)
+                            .frame(height: 6)
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Color.appPrimary)
+                            .frame(width: geo.size.width * min(1, Double(completed) / Double(total)), height: 6)
+                            .animation(.spring(), value: completed)
+                    }
+                }
+                .frame(height: 6)
+                if vm.isPerfectWeek {
+                    Text("Perfect week! 🎉")
+                        .font(.appCaption)
+                        .foregroundStyle(Color.appSuccess)
+                }
             }
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-    }
-}
-
-// MARK: - Private reusable cells
-private struct SmallMetricCell: View {
-    let label: String; let value: String; let unit: String
-    let color: Color; let icon: String
-
-    var body: some View {
-        VStack(spacing: 4) {
-            Image(systemName: icon).foregroundColor(color).font(.callout)
-            Text(value).font(.title3).bold()
-            Text(unit).font(.caption2).foregroundColor(AppTheme.textMuted)
-            Text(label).font(.caption2).foregroundColor(AppTheme.textMuted)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .background(AppTheme.cardBackground)
-        .cornerRadius(12)
+        .padding(Spacing.md)
+        .background(Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: Radius.xl))
+        .padding(.horizontal, Spacing.md)
     }
-}
 
-private struct StatsCell: View {
-    let label: String; let value: String; let unit: String; let color: Color
-
-    var body: some View {
-        VStack(spacing: 2) {
-            Text(value).font(.title2).bold().foregroundColor(color)
-            Text(unit).font(.caption2).foregroundColor(AppTheme.textMuted)
-            Text(label).font(.caption2).foregroundColor(AppTheme.textMuted)
+    private func circleBackground(status: WorkoutStatus?, isToday: Bool, dayColor: Color) -> Color {
+        switch status {
+        case .completed: return .appSuccess
+        case .missed:    return .appDanger
+        case .postponed: return .appWarning
+        default:         return isToday ? dayColor.opacity(0.2) : Color.appSurfaceRaised
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .background(AppTheme.cardBackground)
-        .cornerRadius(12)
-        .overlay(
-            VStack {
-                RoundedRectangle(cornerRadius: 12).fill(color).frame(height: 3)
-                Spacer()
+    }
+
+    private var weeklyRunStats: some View {
+        let totalKm = vm.weeklyRunDistance
+        let runs = vm.weeklyRuns
+        return HStack {
+            VStack(alignment: .leading, spacing: Spacing.xxs) {
+                Label("Running", systemImage: "figure.run")
+                    .font(.appHeadline)
+                    .foregroundStyle(Color.appTextPrimary)
+                Text(String(format: "%.1f km · %d runs", totalKm, runs.count))
+                    .font(.appCaption)
+                    .foregroundStyle(Color.appTextSecondary)
             }
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+            Spacer()
+            if !runs.isEmpty {
+                HStack(alignment: .bottom, spacing: 4) {
+                    ForEach(runs.prefix(7), id: \.id) { run in
+                        let maxDist = runs.prefix(7).map(\.distance).max() ?? 1
+                        let height = max(8, CGFloat(run.distance / maxDist) * 40)
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Color.dayTuesday)
+                            .frame(width: 8, height: height)
+                    }
+                }
+            }
+        }
+        .padding(Spacing.md)
+        .background(Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: Radius.xl))
+        .padding(.horizontal, Spacing.md)
+    }
+
+    // MARK: - Trend Charts
+
+    private var trendCharts: some View {
+        VStack(spacing: Spacing.md) {
+            if vm.weeklyMetrics.count >= 2 {
+                hrvTrendChart
+                rhrTrendChart
+            }
+        }
+    }
+
+    private var hrvTrendChart: some View {
+        let points = vm.weeklyMetrics.compactMap { m -> (String, Double)? in
+            guard let v = m.hrv else { return nil }
+            return (String(m.date.suffix(5)), v)
+        }
+        return VStack(alignment: .leading, spacing: Spacing.xs) {
+            Text("HRV Trend").font(.appTitle3).foregroundStyle(Color.appTextPrimary)
+            if points.isEmpty {
+                Text("Not enough data yet")
+                    .font(.appCaption)
+                    .foregroundStyle(Color.appTextSecondary)
+                    .frame(height: 100)
+            } else {
+                Chart(Array(points.enumerated()), id: \.offset) { _, point in
+                    LineMark(x: .value("Date", point.0), y: .value("HRV", point.1))
+                        .foregroundStyle(Color.appPrimary)
+                    AreaMark(x: .value("Date", point.0), y: .value("HRV", point.1))
+                        .foregroundStyle(Color.appPrimary.opacity(0.15))
+                }
+                .frame(height: 100)
+                .chartXAxis { AxisMarks { AxisValueLabel().foregroundStyle(Color.appTextSecondary) } }
+                .chartYAxis { AxisMarks { AxisValueLabel().foregroundStyle(Color.appTextSecondary) } }
+            }
+        }
+        .padding(Spacing.md)
+        .background(Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: Radius.xl))
+        .padding(.horizontal, Spacing.md)
+    }
+
+    private var rhrTrendChart: some View {
+        let points = vm.weeklyMetrics.compactMap { m -> (String, Double)? in
+            guard let v = m.rhr else { return nil }
+            return (String(m.date.suffix(5)), v)
+        }
+        return VStack(alignment: .leading, spacing: Spacing.xs) {
+            HStack {
+                Text("RHR Trend").font(.appTitle3).foregroundStyle(Color.appTextPrimary)
+                Spacer()
+                Text("Lower is better ↓").font(.appCaption).foregroundStyle(Color.appTextSecondary)
+            }
+            if !points.isEmpty {
+                Chart(Array(points.enumerated()), id: \.offset) { _, point in
+                    LineMark(x: .value("Date", point.0), y: .value("RHR", point.1))
+                        .foregroundStyle(Color.appDanger)
+                    AreaMark(x: .value("Date", point.0), y: .value("RHR", point.1))
+                        .foregroundStyle(Color.appDanger.opacity(0.1))
+                }
+                .frame(height: 100)
+                .chartXAxis { AxisMarks { AxisValueLabel().foregroundStyle(Color.appTextSecondary) } }
+                .chartYAxis { AxisMarks { AxisValueLabel().foregroundStyle(Color.appTextSecondary) } }
+            }
+        }
+        .padding(Spacing.md)
+        .background(Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: Radius.xl))
+        .padding(.horizontal, Spacing.md)
     }
 }

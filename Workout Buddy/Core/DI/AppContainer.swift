@@ -2,16 +2,19 @@ import Foundation
 import FirebaseFirestore
 import Combine
 
+// MARK: - App Container
+// Lightweight DI container — kept for backward compatibility with any remaining old references.
+// New code uses @Observable ViewModels created directly with uid from AuthViewModel.
+
 @MainActor
 final class AppContainer: ObservableObject {
 
-    // MARK: - Services
     let firestoreService: FirestoreService
-    let healthKitService: HealthKitService
+    let healthKitService: HealthKitManager
 
-    // MARK: - Repositories
-    let profileRepository: ProfileRepository
+    // Legacy repositories (kept to prevent compile errors during migration)
     let workoutRepository: WorkoutRepository
+    let profileRepository: ProfileRepository
     let bodyMetricsRepository: BodyMetricsRepository
     let nutritionRepository: NutritionRepository
     let pullUpRepository: PullUpRepository
@@ -19,17 +22,13 @@ final class AppContainer: ObservableObject {
 
     init() {
         let db = Firestore.firestore()
-        firestoreService       = FirestoreService(db: db)
-        healthKitService       = HealthKitService()
-        profileRepository      = ProfileRepository(service: firestoreService)
-        workoutRepository      = WorkoutRepository(service: firestoreService)
-        bodyMetricsRepository  = BodyMetricsRepository(service: firestoreService)
-        nutritionRepository    = NutritionRepository(service: firestoreService)
-        pullUpRepository       = PullUpRepository(service: firestoreService)
-        runningRepository      = RunningRepository(service: firestoreService)
-
-        Task { await healthKitService.requestAuthorization() }
-        let seeder = DataSeeder(db: db)
-        Task { await seeder.seedIfNeeded() }
+        firestoreService      = FirestoreService(db: db)
+        healthKitService      = HealthKitManager()
+        workoutRepository     = WorkoutRepository(service: firestoreService)
+        profileRepository     = ProfileRepository(service: firestoreService)
+        bodyMetricsRepository = BodyMetricsRepository(service: firestoreService)
+        nutritionRepository   = NutritionRepository(service: firestoreService)
+        pullUpRepository      = PullUpRepository(service: firestoreService)
+        runningRepository     = RunningRepository(service: firestoreService)
     }
 }

@@ -8,24 +8,26 @@ final class WorkoutRepository {
         self.service = service
     }
 
-    // MARK: - Workout program (read from seeded Firestore data)
-    func listenWorkoutDay(_ day: String) -> AsyncStream<Result<WorkoutDay?, AppError>> {
+    // MARK: - Workout plans (read from Firestore workoutPlans collection)
+
+    func listenWorkoutDay(_ day: String) -> AsyncStream<Result<WorkoutPlan?, AppError>> {
         let path = AppConstants.Firestore.path(AppConstants.Firestore.Collections.workoutDays, day)
         return service.listenDocument(path: path)
     }
 
-    func fetchAllWorkoutDays() async throws -> [String: WorkoutDay] {
-        var result: [String: WorkoutDay] = [:]
+    func fetchAllWorkoutDays() async throws -> [String: WorkoutPlan] {
+        var result: [String: WorkoutPlan] = [:]
         for day in AppConstants.Firestore.WeekDays.all {
             let path = AppConstants.Firestore.path(AppConstants.Firestore.Collections.workoutDays, day)
-            if let wd: WorkoutDay = try await service.fetchDocument(path: path) {
+            if let wd: WorkoutPlan = try await service.fetchDocument(path: path) {
                 result[day] = wd
             }
         }
         return result
     }
 
-    // MARK: - Completion state
+    // MARK: - Workout logs (per-day completion state)
+
     func listenCompletedDays() -> AsyncStream<Result<[String: Bool]?, AppError>> {
         let path = AppConstants.Firestore.path(AppConstants.Firestore.Collections.workoutLogs, AppConstants.Firestore.Documents.completed)
         return service.listenDocument(path: path)
@@ -37,12 +39,14 @@ final class WorkoutRepository {
     }
 
     // MARK: - Pull-up program
+
     func fetchPullUpProgram() async throws -> PullUpProgram? {
         let path = AppConstants.Firestore.path(AppConstants.Firestore.Collections.pullupProgram, AppConstants.Firestore.Documents.programMain)
         return try await service.fetchDocument(path: path)
     }
 
     // MARK: - Quotes
+
     func fetchQuotes() async throws -> [String] {
         struct QuotesDoc: Codable { var quotes: [String] }
         let path = AppConstants.Firestore.path(AppConstants.Firestore.Collections.goals, AppConstants.Firestore.Documents.quotes)

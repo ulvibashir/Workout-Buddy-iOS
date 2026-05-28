@@ -1,5 +1,9 @@
 import Foundation
 
+// These Date extensions are referenced across multiple files.
+// Core date helpers (dateKey, isToday, dayLetter, etc.) are defined in PullUpsViewModel.swift
+// to avoid duplication. This file extends with additional formatting helpers.
+
 extension Date {
     var shortFormatted: String {
         let f = DateFormatter()
@@ -16,6 +20,10 @@ extension Date {
 
     static func from(yyyyMMdd: String) -> Date? {
         DateFormatter.yyyyMMdd.date(from: yyyyMMdd)
+    }
+
+    func daysAgo(_ n: Int) -> Date {
+        Calendar.current.date(byAdding: .day, value: -n, to: self) ?? self
     }
 }
 

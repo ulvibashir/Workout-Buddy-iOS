@@ -1,78 +1,108 @@
 import Foundation
-import Combine
+import FirebaseFirestore
 
 @MainActor
-final class WorkoutViewModel: ObservableObject {
+@Observable
+final class WorkoutViewModel {
 
-    @Published var workoutDays:      [String: WorkoutDay] = [:]
-    @Published var completedDays:    [String: Bool] = [:]
-    @Published var selectedDay:      String = ""
-    @Published var isLoading:        Bool = true
-    @Published var showRestTimer:    Bool = false
-    @Published var restDuration:     Int  = 90
-    @Published var showCompletionAlert: Bool = false
+    var selectedDate: Date = .today
+    var workoutPlans: [String: WorkoutPlan] = [:]
+    var weekWorkoutLogs: [String: WorkoutLog] = [:]
+    var isLoading: Bool = false
+    var error: String?
+    var showConfetti: Bool = false
 
-    private let workoutRepo: WorkoutRepository
-    private var tasks: [Task<Void, Never>] = []
+    private let db = Firestore.firestore()
+    private var uid: String
 
-    init(container: AppContainer) {
-        workoutRepo = container.workoutRepository
-        selectedDay = currentDayKey
+    init(uid: String) {
+        self.uid = uid
     }
 
-    var currentDayKey: String {
-        let weekday = Calendar.current.component(.weekday, from: Date())
-        let days = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"]
-        return days[weekday - 1]
+    // MARK: - Computed
+
+    var selectedPlan: WorkoutPlan? {
+        workoutPlans[selectedDate.weekdayName]
     }
 
-    var orderedDays: [String] { AppConstants.Firestore.WeekDays.all }
+    var selectedLog: WorkoutLog? {
+        weekWorkoutLogs[selectedDate.dateKey]
+    }
 
-    var selectedWorkout: WorkoutDay? { workoutDays[selectedDay] }
+    var showActionButtons: Bool {
+        !isLoading && selectedDate.isToday && (selectedLog == nil || selectedLog?.status == .pending)
+    }
 
-    var isSelectedDayCompleted: Bool { completedDays[selectedDay] ?? false }
+    var canMarkCompleted: Bool {
+        !isLoading && (selectedLog?.status == .postponed || selectedLog?.status == .missed)
+    }
 
-    func start() {
-        tasks.forEach { $0.cancel() }
+    // MARK: - Data Loading
+
+    func loadWeekData() async {
         isLoading = true
-        // Listen to each day individually so UI updates the moment DataSeeder writes —
-        // prevents the race condition where seeder finishes after the initial fetch.
-        tasks = [Task { await listenCompletedDays() }]
-            + AppConstants.Firestore.WeekDays.all.map { day in
-                Task { await listenWorkoutDay(day) }
+        let weekDays = Date.currentWeekDays()
+
+        // Load plans
+        for day in WorkoutPlan.dayOrder {
+            if let plan = try? await db.document("users/\(uid)/workoutPlans/\(day)").getDocument(as: WorkoutPlan.self) {
+                workoutPlans[day] = plan
             }
-    }
-
-    func stop() { tasks.forEach { $0.cancel() }; tasks = [] }
-
-    func markCompleted() {
-        let day = selectedDay
-        Task {
-            try? await workoutRepo.markDayCompleted(day, completed: true)
-            showCompletionAlert = true
         }
-    }
 
-    func unmarkCompleted() {
-        let day = selectedDay
-        Task { try? await workoutRepo.markDayCompleted(day, completed: false) }
-    }
-
-    func triggerRestTimer(seconds: Int = 90) {
-        restDuration = seconds
-        showRestTimer = true
-    }
-
-    private func listenWorkoutDay(_ day: String) async {
-        for await result in workoutRepo.listenWorkoutDay(day) {
-            if case .success(let wd) = result, let wd { workoutDays[day] = wd }
-            isLoading = false
+        // Load logs
+        for day in weekDays {
+            if let log = try? await db.document("users/\(uid)/workoutLogs/\(day.dateKey)").getDocument(as: WorkoutLog.self) {
+                weekWorkoutLogs[day.dateKey] = log
+            }
         }
+        isLoading = false
     }
 
-    private func listenCompletedDays() async {
-        for await result in workoutRepo.listenCompletedDays() {
-            if case .success(let days) = result { completedDays = days ?? [:] }
-        }
+    // MARK: - Actions
+
+    func completeWorkout() async {
+        guard let plan = selectedPlan else { return }
+        let log = WorkoutLog(
+            date: selectedDate.dateKey,
+            workoutType: plan.type,
+            workoutName: plan.name,
+            status: .completed,
+            isAutoMissed: false,
+            completedAt: Timestamp(date: Date()),
+            exercises: plan.exercises
+        )
+        try? await saveLog(log)
+        weekWorkoutLogs[selectedDate.dateKey] = log
+        showConfetti = true
+    }
+
+    func postponeWorkout() async {
+        guard let plan = selectedPlan else { return }
+        let log = WorkoutLog(
+            date: selectedDate.dateKey,
+            workoutType: plan.type,
+            workoutName: plan.name,
+            status: .postponed,
+            isAutoMissed: false,
+            postponedAt: Timestamp(date: Date()),
+            exercises: plan.exercises
+        )
+        try? await saveLog(log)
+        weekWorkoutLogs[selectedDate.dateKey] = log
+    }
+
+    func markAsCompleted() async {
+        guard let existing = selectedLog else { return }
+        var updated = existing
+        updated.status = .completed
+        updated.completedAt = Timestamp(date: Date())
+        updated.isAutoMissed = false
+        try? await saveLog(updated)
+        weekWorkoutLogs[selectedDate.dateKey] = updated
+    }
+
+    private func saveLog(_ log: WorkoutLog) async throws {
+        try db.document("users/\(uid)/workoutLogs/\(log.date)").setData(from: log, merge: true)
     }
 }

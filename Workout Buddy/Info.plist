@@ -2,22 +2,29 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>UIApplicationSceneManifest</key>
-	<dict>
-		<key>UIApplicationSupportsMultipleScenes</key>
-		<false/>
-		<key>UISceneConfigurations</key>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Workout Buddy reads your health data including heart rate, HRV, VO2 Max, sleep, and workouts to track your fitness progress and sync to your personal dashboard.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Workout Buddy does not write to Health.</string>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.ulvi.workoutbuddy.healthsync</string>
+		<string>com.ulvi.workoutbuddy.gapfill</string>
+	</array>
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<false/>
+	<key>GIDClientID</key>
+	<string>181703445463-ju4hedtqdees7s23v6fjsak4t99lcrd7.apps.googleusercontent.com</string>
+	<key>CFBundleURLTypes</key>
+	<array>
 		<dict>
-			<key>UIWindowSceneSessionRoleApplication</key>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
 			<array>
-				<dict>
-					<key>UISceneConfigurationName</key>
-					<string>Default Configuration</string>
-					<key>UISceneDelegateClassName</key>
-					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
-				</dict>
+				<string>com.googleusercontent.apps.181703445463-ju4hedtqdees7s23v6fjsak4t99lcrd7</string>
 			</array>
 		</dict>
-	</dict>
+	</array>
 </dict>
 </plist>

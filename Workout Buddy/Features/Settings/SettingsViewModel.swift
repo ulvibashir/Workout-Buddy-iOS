@@ -1,59 +1,69 @@
 import Foundation
-import Combine
+import FirebaseFirestore
+import SwiftUI
 
 @MainActor
-final class SettingsViewModel: ObservableObject {
+@Observable
+final class SettingsViewModel {
 
-    @Published var profile:       UserProfile = UserProfile()
-    @Published var isLoading:     Bool = true
-    @Published var showClearAlert: Bool = false
-    @Published var isSyncing:     Bool = false
-    @Published var syncMessage:   String?
+    var profile: UserProfile = UserProfile()
+    var healthWeight: Double? = nil
+    var isLoading: Bool = false
+    var isSyncing: Bool = false
+    var lastSyncDate: Date? = nil
+    var showSignOutAlert: Bool = false
 
-    private let profileRepo:  ProfileRepository
-    private let healthKit:    HealthKitService
-    private let metricsRepo:  BodyMetricsRepository
-    private var tasks: [Task<Void, Never>] = []
+    @ObservationIgnored
+    @AppStorage("colorSchemePreference") var colorSchemePreferenceRaw: String = "System"
 
-    init(container: AppContainer) {
-        profileRepo = container.profileRepository
-        healthKit   = container.healthKitService
-        metricsRepo = container.bodyMetricsRepository
+    var colorSchemePreference: ColorSchemePreference {
+        get { ColorSchemePreference(rawValue: colorSchemePreferenceRaw) ?? .system }
+        set { colorSchemePreferenceRaw = newValue.rawValue }
     }
 
-    func start() {
-        tasks.forEach { $0.cancel() }
-        tasks = [ Task { await listenProfile() } ]
-    }
+    enum ColorSchemePreference: String, CaseIterable {
+        case system = "System"
+        case light  = "Light"
+        case dark   = "Dark"
 
-    func stop() { tasks.forEach { $0.cancel() }; tasks = [] }
-
-    // MARK: - Save profile changes
-    func saveProfile() {
-        let p = profile
-        Task { try? await profileRepo.saveProfile(p) }
-    }
-
-    // MARK: - HealthKit sync
-    func syncHealthKit() {
-        isSyncing = true
-        Task {
-            let metric = await healthKit.buildLatestBodyMetric()
-            if !metric.weight.isEmpty || !metric.rhr.isEmpty {
-                try? await metricsRepo.save(metric: metric, forDate: Date.todayKey)
-                syncMessage = "Synced latest data from Apple Health."
-            } else {
-                syncMessage = "No new data found in Apple Health."
+        var colorScheme: ColorScheme? {
+            switch self {
+            case .light:  return .light
+            case .dark:   return .dark
+            case .system: return nil
             }
-            isSyncing = false
         }
     }
 
-    // MARK: - Private
-    private func listenProfile() async {
-        for await result in profileRepo.listenProfile() {
-            if case .success(let p) = result { profile = p ?? UserProfile() }
-            isLoading = false
-        }
+    private let db = Firestore.firestore()
+    private var uid: String
+
+    init(uid: String) {
+        self.uid = uid
+    }
+
+    func loadProfile() async {
+        isLoading = true
+        async let profileSnap = db.document("users/\(uid)/profile/main").getDocument(as: UserProfile.self)
+        async let metricsSnap = db.document("users/\(uid)/healthMetrics/\(Date.today.dateKey)").getDocument(as: HealthMetrics.self)
+        profile = (try? await profileSnap) ?? UserProfile()
+        let metrics = try? await metricsSnap
+        healthWeight = metrics?.weight
+        lastSyncDate = metrics?.lastSyncedAt?.dateValue()
+        isLoading = false
+    }
+
+    func saveProfile(_ updated: UserProfile) async {
+        try? db.document("users/\(uid)/profile/main").setData(from: updated, merge: true)
+        profile = updated
+    }
+
+    func syncNow(syncEngine: SyncEngine) async {
+        isSyncing = true
+        await syncEngine.syncHealthData()
+        let metrics = try? await db.document("users/\(uid)/healthMetrics/\(Date.today.dateKey)").getDocument(as: HealthMetrics.self)
+        healthWeight = metrics?.weight
+        lastSyncDate = Date()
+        isSyncing = false
     }
 }

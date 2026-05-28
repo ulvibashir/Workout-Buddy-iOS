@@ -1,5 +1,28 @@
 import Foundation
 
+// MARK: - Pull-up data types
+
+struct PullUpLog: Codable, Identifiable {
+    var id: String?
+    var sets: [Int]
+    var maxReps: Int  { sets.max() ?? 0 }
+    var totalReps: Int { sets.reduce(0, +) }
+}
+
+struct PullUpProgram: Codable {
+    var currentMax: Int
+    var grips: [String]
+    var weeklyProgression: [WeekPlan]
+
+    struct WeekPlan: Codable {
+        var week: Int
+        var sets: Int
+        var reps: Int
+    }
+}
+
+// MARK: - Repository
+
 final class PullUpRepository {
 
     private let service: FirestoreService

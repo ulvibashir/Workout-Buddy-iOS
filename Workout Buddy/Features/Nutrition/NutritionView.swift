@@ -1,238 +1,270 @@
 import SwiftUI
 
 struct NutritionView: View {
-    @EnvironmentObject private var container: AppContainer
-
-    var body: some View {
-        _NutritionView(vm: NutritionViewModel(container: container))
-    }
-}
-
-private struct _NutritionView: View {
-    @StateObject var vm: NutritionViewModel
-    @State private var showFoodPicker = false
+    @State private var vm = NutritionViewModel()
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 12) {
-                    trainingToggle
-                    macroRingsSection
-                    waterSection
-                    foodLogSection
+                VStack(spacing: Spacing.md) {
+                    dayTypeHeader
+                    macroTargetsCard
+                    mealPlanSection
+                    foodGuideSection
                     supplementsSection
+                    cheatDayCard
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 30)
+                .padding(.horizontal, Spacing.md)
+                .padding(.bottom, Spacing.xxxl)
             }
             .navigationTitle("Nutrition")
             .navigationBarTitleDisplayMode(.large)
-            .background(AppTheme.background.ignoresSafeArea())
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showFoodPicker = true
-                    } label: {
-                        Image(systemName: "plus.circle.fill")
-                            .foregroundColor(AppTheme.accentGreen)
-                    }
-                }
-            }
-            .sheet(isPresented: $showFoodPicker) {
-                FoodPickerView(foodDatabase: vm.foodDatabase) { food, servings in
-                    vm.addFood(food, servings: servings)
-                }
-            }
+            .background(Color.appBackground.ignoresSafeArea())
         }
-        .onAppear  { vm.start() }
-        .onDisappear { vm.stop() }
     }
 
-    // MARK: - Training day toggle
-    private var trainingToggle: some View {
+    // MARK: - Day Type Header
+
+    private var dayTypeHeader: some View {
         HStack {
-            Text("Day type:").font(.subheadline).foregroundColor(AppTheme.textMuted)
-            Spacer()
-            Picker("", selection: $vm.isTrainingDay) {
-                Text("Training").tag(true)
-                Text("Rest").tag(false)
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 180)
-        }
-        .padding(14)
-        .background(AppTheme.cardBackground)
-        .cornerRadius(12)
-    }
-
-    // MARK: - Macro rings
-    private var macroRingsSection: some View {
-        VStack(spacing: 12) {
-            // Calories headline
-            HStack {
-                VStack(alignment: .leading) {
-                    Text("Calories").font(.caption).foregroundColor(AppTheme.textMuted)
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text("\(Int(vm.totalCalories))").font(.title).bold()
-                        Text("/ \(vm.activeTargets.calories)").font(.subheadline).foregroundColor(AppTheme.textMuted)
-                        Text("kcal").font(.caption).foregroundColor(AppTheme.textMuted)
-                    }
-                }
-                Spacer()
-                CircularProgress(
-                    progress: min(1, vm.totalCalories / Double(vm.activeTargets.calories)),
-                    color: AppTheme.accentOrange, size: 52
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Today's Plan")
+                    .font(.appTitle3)
+                    .foregroundStyle(Color.appTextPrimary)
+                Label(
+                    vm.isTrainingDay ? "Training Day 🔥" : "Rest Day 💤",
+                    systemImage: vm.isTrainingDay ? "flame.fill" : "moon.fill"
                 )
+                .font(.appSubheadline)
+                .foregroundStyle(vm.isTrainingDay ? Color.appPrimary : Color.appTextSecondary)
             }
-            .padding(14)
-            .background(AppTheme.cardBackground)
-            .cornerRadius(12)
-
-            // Macro breakdown
-            HStack(spacing: 8) {
-                MacroCell(label: "Protein",  value: vm.totalProtein, target: Double(vm.activeTargets.protein),  unit: "g", color: AppTheme.accent)
-                MacroCell(label: "Carbs",    value: vm.totalCarbs,   target: Double(vm.activeTargets.carbs),    unit: "g", color: AppTheme.accentBlue)
-                MacroCell(label: "Fats",     value: vm.totalFats,    target: Double(vm.activeTargets.fat),      unit: "g", color: AppTheme.accentOrange)
-            }
+            Spacer()
         }
     }
 
-    // MARK: - Water tracker
-    private var waterSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("Water", systemImage: "drop.fill")
-                    .font(.subheadline).bold()
-                    .foregroundColor(AppTheme.accentBlue)
-                Spacer()
-                Text("\(vm.log.water) ml").font(.callout).foregroundColor(AppTheme.textMuted)
+    // MARK: - Macro Targets Card
+
+    private var macroTargetsCard: some View {
+        let t = vm.todayTargets
+        return VStack(spacing: Spacing.md) {
+            HStack(spacing: 0) {
+                macroColumn("Protein", "\(t.protein)g", .appInfo)
+                Divider().frame(height: 50)
+                macroColumn("Carbs", "\(t.carbs)g", .appPrimary)
+                Divider().frame(height: 50)
+                macroColumn("Fat", "\(t.fat)g", .appWarning)
             }
-            HStack(spacing: 8) {
-                ForEach(0..<8, id: \.self) { i in
-                    let filled = Double(vm.log.water) / 250 > Double(i)
-                    Image(systemName: "drop.fill")
-                        .foregroundColor(filled ? AppTheme.accentBlue : AppTheme.border)
-                        .font(.title3)
-                        .onTapGesture { vm.addWater(ml: 250) }
-                }
-                Spacer()
-                Button { vm.removeWater(ml: 250) } label: {
-                    Image(systemName: "minus.circle").foregroundColor(AppTheme.textMuted)
-                }
-            }
+            Text("Calories: ~\(t.calories) kcal  |  Water: \(t.water, specifier: "%.1f")L")
+                .font(.appCaption)
+                .foregroundStyle(Color.appTextSecondary)
         }
-        .padding(14)
-        .background(AppTheme.cardBackground)
-        .cornerRadius(12)
+        .padding(Spacing.md)
+        .background(Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: Radius.lg))
     }
 
-    // MARK: - Food log
-    private var foodLogSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Today's Food").font(.subheadline).bold()
-                Spacer()
-                Button {
-                    showFoodPicker = true
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .foregroundColor(AppTheme.accentGreen)
-                }
-            }
-            if vm.log.foods.isEmpty {
-                Text("No food logged yet")
-                    .font(.caption).foregroundColor(AppTheme.textMuted)
-                    .padding(.vertical, 8)
-            } else {
-                ForEach(vm.log.foods) { food in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(food.name).font(.callout).bold()
-                            Text("\(Int(food.weight))g · P:\(Int(food.protein)) C:\(Int(food.carbs)) F:\(Int(food.fats))")
-                                .font(.caption).foregroundColor(AppTheme.textMuted)
-                        }
-                        Spacer()
-                        Text("\(Int(food.calories)) kcal").font(.callout).foregroundColor(AppTheme.accentOrange)
-                    }
-                    .padding(.vertical, 6)
-                    Divider().background(AppTheme.border)
-                }
-                .onDelete(perform: vm.removeFood)
-            }
-        }
-        .padding(14)
-        .background(AppTheme.cardBackground)
-        .cornerRadius(12)
-    }
-
-    // MARK: - Supplements
-    private var supplementsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Supplements").font(.subheadline).bold()
-            if vm.supplements.isEmpty {
-                Text("Loading…").font(.caption).foregroundColor(AppTheme.textMuted)
-            } else {
-                ForEach(vm.supplements) { sup in
-                    let taken = vm.log.supplements.contains(sup.name)
-                    Button {
-                        vm.toggleSupplement(sup.name)
-                    } label: {
-                        HStack {
-                            Image(systemName: taken ? "checkmark.circle.fill" : "circle")
-                                .foregroundColor(taken ? AppTheme.accentGreen : AppTheme.border)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(sup.name).font(.callout)
-                                Text("\(sup.dose) · \(sup.timing)").font(.caption).foregroundColor(AppTheme.textMuted)
-                            }
-                            Spacer()
-                        }
-                        .padding(.vertical, 6)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    Divider().background(AppTheme.border)
-                }
-            }
-        }
-        .padding(14)
-        .background(AppTheme.cardBackground)
-        .cornerRadius(12)
-    }
-}
-
-// MARK: - Macro cell
-private struct MacroCell: View {
-    let label: String; let value: Double; let target: Double; let unit: String; let color: Color
-
-    var body: some View {
-        VStack(spacing: 6) {
-            CircularProgress(progress: min(1, target > 0 ? value / target : 0), color: color, size: 44)
-            Text("\(Int(value))").font(.callout).bold()
-            Text("/ \(Int(target))\(unit)").font(.caption2).foregroundColor(AppTheme.textMuted)
-            Text(label).font(.caption2).foregroundColor(AppTheme.textMuted)
+    private func macroColumn(_ label: String, _ value: String, _ color: Color) -> some View {
+        VStack(spacing: Spacing.xxs) {
+            Text(value)
+                .font(.appMetricSmall)
+                .foregroundStyle(color)
+            Text(label)
+                .font(.appCaption)
+                .foregroundStyle(Color.appTextSecondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .background(AppTheme.cardBackground)
-        .cornerRadius(12)
+    }
+
+    // MARK: - Meal Plan Section
+
+    private var mealPlanSection: some View {
+        VStack(spacing: Spacing.xs) {
+            SectionHeader(title: "Daily Meal Plan")
+            ForEach(vm.meals) { meal in
+                MealCardView(meal: meal, isExpanded: vm.expandedMeal == meal.id) {
+                    withAnimation(.easeInOut(duration: 0.22)) {
+                        vm.expandedMeal = vm.expandedMeal == meal.id ? nil : meal.id
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Food Guide Section
+
+    private var foodGuideSection: some View {
+        VStack(spacing: Spacing.xs) {
+            SectionHeader(title: "Food Guide")
+            ExpandableFoodSection(
+                header: "✅ Eat Freely",
+                color: .appSuccess,
+                items: vm.eatFreelyFoods
+            )
+            ExpandableFoodSection(
+                header: "⚠️ Eat in Moderation",
+                color: .appWarning,
+                items: vm.eatInModerationFoods
+            )
+            ExpandableFoodSection(
+                header: "❌ Avoid",
+                color: .appDanger,
+                items: vm.avoidFoods
+            )
+        }
+    }
+
+    // MARK: - Supplements Section
+
+    private var supplementsSection: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            SectionHeader(title: "Daily Stack")
+            ForEach(vm.supplements, id: \.1) { emoji, name, dose, timing in
+                HStack(spacing: Spacing.md) {
+                    Text(emoji).font(.title3)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(name)
+                            .font(.appSubheadline)
+                            .foregroundStyle(Color.appTextPrimary)
+                        Text("\(dose) — \(timing)")
+                            .font(.appCaption)
+                            .foregroundStyle(Color.appTextSecondary)
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, Spacing.xs)
+                if name != vm.supplements.last?.1 {
+                    Divider()
+                }
+            }
+        }
+        .padding(Spacing.md)
+        .background(Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: Radius.lg))
+    }
+
+    // MARK: - Cheat Day Card
+
+    private var cheatDayCard: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            HStack {
+                Text("🎉 Cheat Day — Sunday").font(.appHeadline).foregroundStyle(Color.appTextPrimary)
+            }
+            Text("You've earned it. Here are the rules:")
+                .font(.appSubheadline)
+                .foregroundStyle(Color.appTextSecondary)
+            let rules = [
+                "Stay within reason — don't binge",
+                "Avoid alcohol — hurts recovery",
+                "Enjoy your meal, restart Monday",
+                "Suggested: Plov, shawarma, dessert 🍖",
+            ]
+            ForEach(rules, id: \.self) { rule in
+                HStack(alignment: .top, spacing: Spacing.xs) {
+                    Text("•").foregroundStyle(Color.appPrimary)
+                    Text(rule).font(.appSubheadline).foregroundStyle(Color.appTextPrimary)
+                }
+            }
+        }
+        .padding(Spacing.md)
+        .background(Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: Radius.lg))
+        .overlay(
+            RoundedRectangle(cornerRadius: Radius.lg)
+                .stroke(Color.appPrimary.opacity(0.3), lineWidth: 1)
+        )
     }
 }
 
-// MARK: - Circular progress ring
-struct CircularProgress: View {
-    let progress: Double
-    let color:    Color
-    let size:     CGFloat
+// MARK: - Meal Card
+
+private struct MealCardView: View {
+    let meal: NutritionViewModel.MealPlan
+    let isExpanded: Bool
+    let onTap: () -> Void
 
     var body: some View {
-        ZStack {
-            Circle().stroke(AppTheme.border, lineWidth: 5)
-            Circle()
-                .trim(from: 0, to: progress)
-                .stroke(color, style: StrokeStyle(lineWidth: 5, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .animation(.easeOut(duration: 0.5), value: progress)
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: onTap) {
+                HStack {
+                    Text(meal.emoji).font(.title3)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(meal.name).font(.appHeadline).foregroundStyle(Color.appTextPrimary)
+                        Text(meal.time).font(.appCaption).foregroundStyle(Color.appTextSecondary)
+                    }
+                    Spacer()
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.appCaption)
+                        .foregroundStyle(Color.appTextSecondary)
+                }
+                .padding(Spacing.md)
+            }
+
+            if isExpanded {
+                Divider().padding(.horizontal, Spacing.md)
+                VStack(alignment: .leading, spacing: Spacing.xs) {
+                    Text(meal.foods)
+                        .font(.appSubheadline)
+                        .foregroundStyle(Color.appTextPrimary)
+                    HStack(spacing: Spacing.md) {
+                        macroChip("P", "\(meal.protein)g", .appInfo)
+                        macroChip("C", "\(meal.carbs)g", .appPrimary)
+                        macroChip("F", "\(meal.fat)g", .appWarning)
+                    }
+                }
+                .padding(Spacing.md)
+            }
         }
-        .frame(width: size, height: size)
+        .background(Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: Radius.lg))
+    }
+
+    private func macroChip(_ label: String, _ value: String, _ color: Color) -> some View {
+        HStack(spacing: 2) {
+            Text(label).font(.appCaption).fontWeight(.semibold).foregroundStyle(color)
+            Text(value).font(.appCaption).foregroundStyle(Color.appTextSecondary)
+        }
+    }
+}
+
+// MARK: - Expandable Food Section
+
+private struct ExpandableFoodSection: View {
+    let header: String
+    let color: Color
+    let items: [(String, String)]
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.22)) { isExpanded.toggle() }
+            } label: {
+                HStack {
+                    Text(header).font(.appHeadline).foregroundStyle(color)
+                    Spacer()
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.appCaption)
+                        .foregroundStyle(Color.appTextSecondary)
+                }
+                .padding(Spacing.md)
+            }
+
+            if isExpanded {
+                Divider().padding(.horizontal, Spacing.md)
+                VStack(alignment: .leading, spacing: Spacing.xs) {
+                    ForEach(items, id: \.0) { name, stat in
+                        HStack {
+                            Text(name).font(.appSubheadline).foregroundStyle(Color.appTextPrimary)
+                            Spacer()
+                            Text(stat).font(.appCaption).foregroundStyle(Color.appTextSecondary)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+                .padding(Spacing.md)
+            }
+        }
+        .background(Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: Radius.lg))
     }
 }

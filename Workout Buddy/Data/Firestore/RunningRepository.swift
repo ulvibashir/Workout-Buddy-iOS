@@ -1,5 +1,17 @@
 import Foundation
 
+// MARK: - Six-month goal model
+
+struct SixMonthGoal: Codable, Identifiable {
+    var id: String?
+    var title: String
+    var target: String
+    var deadline: String
+    var isCompleted: Bool?
+}
+
+// MARK: - Repository
+
 final class RunningRepository {
 
     private let service: FirestoreService
@@ -23,7 +35,6 @@ final class RunningRepository {
         try await service.deleteDocument(path: path)
     }
 
-    // MARK: - Six-month goals
     func fetchSixMonthGoals() async throws -> [SixMonthGoal] {
         struct GoalsDoc: Codable { var goals: [SixMonthGoal] }
         let path = AppConstants.Firestore.path(AppConstants.Firestore.Collections.goals, AppConstants.Firestore.Documents.sixMonth)

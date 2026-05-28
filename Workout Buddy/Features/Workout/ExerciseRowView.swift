@@ -1,5 +1,11 @@
 import SwiftUI
 
+struct LoggedSet {
+    var weight: Double?
+    var reps: Int?
+    var completed: Bool = false
+}
+
 struct ExerciseRowView: View {
     let exercise:    Exercise
     let accentColor: Color

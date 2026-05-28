@@ -7,18 +7,19 @@ import FirebaseFirestore
 final class DataSeeder {
 
     private let db: Firestore
-    private let uid = AppConstants.userID
+    private let uid: String
 
-    init(db: Firestore) {
-        self.db = db
+    init(uid: String) {
+        self.db = Firestore.firestore()
+        self.uid = uid
     }
 
     func seedIfNeeded() async {
-        let flagPath = "\(AppConstants.Firestore.userRoot)/meta/seeded"
+        let flagPath = "users/\(uid)/meta/seeded_v2"
         if let snap = try? await db.document(flagPath).getDocument(), snap.exists { return }
         do {
             try await seedAll()
-            try await db.document(flagPath).setData(["seededAt": ISO8601DateFormatter().string(from: Date())])
+            try await db.document("users/\(uid)/meta/seeded_v2").setData(["seededAt": ISO8601DateFormatter().string(from: Date())])
             print("[DataSeeder] Seeded successfully.")
         } catch {
             print("[DataSeeder] Error: \(error.localizedDescription)")
@@ -34,11 +35,26 @@ final class DataSeeder {
         // 1. Profile
         batch.setData(profileData, forDocument: db.document("users/\(u)/profile/main"))
 
-        // 2. Workout days
+        // 2. Workout plans (transformed to match WorkoutPlan model)
         for (day, data) in workoutDays {
-            batch.setData(data, forDocument: db.document("users/\(u)/workoutDays/\(day)"))
+            let rawExercises = (data["exercises"] as? [[String: Any]]) ?? []
+            let exerciseNames: [String] = rawExercises.compactMap { ex in
+                guard let name = ex["exercise"] as? String else { return nil }
+                if let sets = ex["sets"] as? Int, let reps = ex["reps"] as? String {
+                    return "\(name) \(sets)×\(reps)"
+                }
+                return name
+            }
+            let planData: [String: Any] = [
+                "name":      data["name"]     ?? "",
+                "type":      planType(for: day),
+                "colorHex":  data["color"]    ?? "#636366",
+                "duration":  data["duration"] ?? "",
+                "intensity": data["intensity"] ?? "",
+                "exercises": exerciseNames
+            ]
+            batch.setData(planData, forDocument: db.document("users/\(u)/workoutPlans/\(day)"))
         }
-        batch.setData(["exercises": morningMobility], forDocument: db.document("users/\(u)/workoutDays/morningMobility"))
 
         // 3. Nutrition config
         batch.setData(nutritionTargets, forDocument: db.document("users/\(u)/nutritionConfig/targets"))
@@ -314,6 +330,16 @@ final class DataSeeder {
     }
 
     // MARK: - Helpers
+
+    private func planType(for day: String) -> String {
+        switch day {
+        case "tuesday", "saturday": return "cardio"
+        case "thursday":            return "swim"
+        case "sunday":              return "rest"
+        default:                    return "strength"
+        }
+    }
+
     private func ex(_ name: String, sets: Int? = nil, reps: String? = nil, notes: String? = nil) -> [String: Any] {
         var d: [String: Any] = ["exercise": name]
         if let s = sets  { d["sets"]  = s }

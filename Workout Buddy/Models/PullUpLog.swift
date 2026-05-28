@@ -1,23 +1,72 @@
 import Foundation
-import FirebaseFirestore
 
-struct PullUpLog: Codable, Identifiable {
-    @DocumentID var id: String?  // date key "yyyy-MM-dd"
+// MARK: - App Enums
+// This file was PullUpLog.swift — repurposed for app-wide enums and types.
 
-    var sets:      [Int]
-    var maxReps:   Int
-    var totalReps: Int
+enum WorkoutStatus: String, Codable, CaseIterable {
+    case pending   = "pending"
+    case completed = "completed"
+    case postponed = "postponed"
+    case missed    = "missed"
 }
 
-struct PullUpProgram: Codable {
-    var currentMax:       Int
-    var currentTraining:  Int
-    var grips:            [String]
-    var weeklyProgression: [WeekPlan]
+enum ReadinessStatus {
+    case ready, caution, rest
 
-    struct WeekPlan: Codable {
-        var week: Int
-        var sets: Int
-        var reps: Int
+    var label: String {
+        switch self {
+        case .ready:   return "Ready to train 🔥"
+        case .caution: return "Train with caution ⚠️"
+        case .rest:    return "Rest today 😴"
+        }
+    }
+}
+
+enum AuthState: Equatable {
+    case loading
+    case unauthenticated
+    case authenticated(uid: String)
+
+    var isAuthenticated: Bool {
+        if case .authenticated = self { return true }
+        return false
+    }
+
+    var uid: String? {
+        if case .authenticated(let uid) = self { return uid }
+        return nil
+    }
+
+    static func == (lhs: AuthState, rhs: AuthState) -> Bool {
+        switch (lhs, rhs) {
+        case (.loading, .loading): return true
+        case (.unauthenticated, .unauthenticated): return true
+        case (.authenticated(let l), .authenticated(let r)): return l == r
+        default: return false
+        }
+    }
+}
+
+enum WorkoutType: String, Codable {
+    case upperBody  = "upper_body"
+    case lowerBody  = "lower_body"
+    case fullBody   = "full_body"
+    case run        = "run"
+    case swim       = "swim"
+    case longRun    = "long_run"
+    case rest       = "rest"
+    case strength   = "strength"
+    case cardio     = "cardio"
+}
+
+enum Trend {
+    case up, down, neutral
+
+    var symbol: String {
+        switch self { case .up: return "↑"; case .down: return "↓"; case .neutral: return "→" }
+    }
+
+    var color: String {
+        switch self { case .up: return "appSuccess"; case .down: return "appDanger"; case .neutral: return "appTextSecondary" }
     }
 }
